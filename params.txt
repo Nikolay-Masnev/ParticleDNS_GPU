@@ -1,0 +1,5 @@
+a = 1
+BoxSize = 50
+r0 = 40
+steps = 1e2
+dt = 1e-1
