@@ -1,11 +1,4 @@
-#include <string>
-#include <iostream>
-#include <vector>
 #include <math.h>
-#include <random>
-#include <fstream>
-#include <sstream>
-#include <iterator>
 
 #include <cuda_runtime.h>
 #include <cuda_profiler_api.h>
@@ -19,7 +12,7 @@
 #include "input_params.h"
 #include "langevin.h"
 
-#define THREADS 10
+#define THREADS 100
 #define BLOCKS  1
 
 uint64_t nBins = 100;
@@ -55,11 +48,13 @@ int main(int argc, char *argv[])
     printf("CUDA device [%s]\n", deviceProps.name);
 
     // reading params
+    printf("reading params\n");
     std::string paramsPath(argv[1]);
     input_params data;
     readParams(data, paramsPath);
 
     // allocate HOST memory
+    printf("allocate HOST memory\n");
     uint64_t nbytes = nBins * sizeof(double);
     uint64_t autocorr_nbytes = autocorr_nBins * sizeof(double);
 
@@ -85,6 +80,7 @@ int main(int argc, char *argv[])
     memset(phi_autocorrelator, 0, autocorr_nbytes);
 
     // allocate DEVISE memory
+    printf("allocate DEVISE memory\n");
     double *d_concentration = 0;
     double *d_velocityVariance = 0;
     double *d_angleVariance = 0;
@@ -99,18 +95,20 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaMalloc((void **)&d_w_autocorrelator, autocorr_nbytes));
     checkCudaErrors(cudaMalloc((void **)&d_phi_autocorrelator, autocorr_nbytes));
 
-    memset(d_concentration, 0, nbytes);
-    memset(d_velocityVariance, 0, nbytes);
-    memset(d_angleVariance, 0, nbytes);
-    memset(d_pdf_vel, 0, nbytes);
-    memset(d_w_autocorrelator, 0, autocorr_nbytes);
-    memset(d_phi_autocorrelator, 0, autocorr_nbytes);
+    cudaMemset(d_concentration, 0, nbytes);
+    cudaMemset(d_velocityVariance, 0, nbytes);
+    cudaMemset(d_angleVariance, 0, nbytes);
+    cudaMemset(d_pdf_vel, 0, nbytes);
+    cudaMemset(d_w_autocorrelator, 0, autocorr_nbytes);
+    cudaMemset(d_phi_autocorrelator, 0, autocorr_nbytes);
 
     //set kernel launch configuration
+    printf("set kernel launch configuration\n");
     dim3 threads = dim3(THREADS, 1, 1);
     dim3 blocks = dim3(BLOCKS, 1, 1);
 
     // create cuda event handles
+    printf("create cuda event handles\n");
     cudaEvent_t start, stop;
     checkCudaErrors(cudaEventCreate(&start));
     checkCudaErrors(cudaEventCreate(&stop));
@@ -120,6 +118,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaDeviceSynchronize());
 
     // set random number generator
+    printf("set random number generator\n");
     curandState *devState;
     checkCudaErrors(cudaMalloc((void**)&devState, THREADS * BLOCKS * sizeof(curandState)));
     time_t t;
@@ -127,6 +126,7 @@ int main(int argc, char *argv[])
     setup_kernel<<<THREADS, BLOCKS, 0, 0>>>(devState, (unsigned long) t);
 
     // copy data from host to devise
+    printf("copy data from host to devise\n");
     cudaMemcpy(d_concentration, concentration, nbytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_velocityVariance, velocityVariance, nbytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_angleVariance, angleVariance, nbytes, cudaMemcpyHostToDevice);
@@ -135,12 +135,14 @@ int main(int argc, char *argv[])
     cudaMemcpy(d_phi_autocorrelator, phi_autocorrelator, autocorr_nbytes, cudaMemcpyHostToDevice);
 
     //start
+    printf("start\n");
     float gpu_time = 0.0f;
     checkCudaErrors(cudaProfilerStart());
     sdkStartTimer(&timer);
     cudaEventRecord(start, 0);
 
     // main loop
+    printf("main loop\n");
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, d_velocityVariance, d_pdf_vel, 
     d_w_autocorrelator, d_phi_autocorrelator, data,  nBins,  autocorr_nBins , devState);
     checkCudaErrors(cudaDeviceSynchronize());
@@ -152,27 +154,39 @@ int main(int argc, char *argv[])
     cudaMemcpy(phi_autocorrelator, d_phi_autocorrelator, autocorr_nbytes, cudaMemcpyDeviceToHost);
 
     // stop
+    printf("stop\n");
     cudaEventRecord(stop, 0);
     sdkStopTimer(&timer);
     checkCudaErrors(cudaProfilerStop());
+
+    // have CPU do some work while waiting for stage 1 to finish
+    unsigned long int counter = 0;
+
+    while (cudaEventQuery(stop) == cudaErrorNotReady) {
+        counter++;
+    }
+
     checkCudaErrors(cudaEventElapsedTime(&gpu_time, start, stop));
+
     printf("time spent executing by the GPU: %.2f\n", gpu_time);
 
     // norm pdf
+    printf("norm pdf\n");
     normalizeArray(concentration, nBins);
-    normalizeArray(velocityVariance, nBins);
-    normalizeArray(pdf_vel, nBins);
+    //normalizeArray(velocityVariance, nBins);
+    //normalizeArray(pdf_vel, nBins);
 
-    normalizeArray(w_autocorrelator, autocorr_nBins);
-    normalizeArray(phi_autocorrelator, autocorr_nBins);
+    //normalizeArray(w_autocorrelator, autocorr_nBins);
+    //normalizeArray(phi_autocorrelator, autocorr_nBins);
 
     // save distribution
+    printf("save dist\n");
     saveHist(concentration, argv[2], nBins);
-    saveHist(velocityVariance, argv[3], nBins);
-    saveHist(pdf_vel, argv[4], nBins);
+    //saveHist(velocityVariance, argv[3], nBins);
+    //saveHist(pdf_vel, argv[4], nBins);
 
-    saveHist(w_autocorrelator, argv[5], autocorr_nBins);
-    saveHist(phi_autocorrelator, argv[6], autocorr_nBins);
+    //saveHist(w_autocorrelator, argv[5], autocorr_nBins);
+    //saveHist(phi_autocorrelator, argv[6], autocorr_nBins);
 
     // free memory
     checkCudaErrors(cudaEventDestroy(start));

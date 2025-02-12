@@ -5,11 +5,8 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
-#define VELOCITY_STAT
-#define PDF_VELOCITY
-#define DEBUG
-#define AUTOCORRELATION
 #define CONCENTRATION
+//#define DEBUG
 
 __global__ void setup_kernel(curandState * state, unsigned long seed );
 
