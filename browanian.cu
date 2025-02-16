@@ -12,7 +12,7 @@
 #include "input_params.h"
 #include "langevin.h"
 
-#define THREADS 100
+#define THREADS 1000
 #define BLOCKS  1
 
 uint64_t nBins = 100;
@@ -101,11 +101,6 @@ int main(int argc, char *argv[])
     cudaMemset(d_pdf_vel, 0, nbytes);
     cudaMemset(d_w_autocorrelator, 0, autocorr_nbytes);
     cudaMemset(d_phi_autocorrelator, 0, autocorr_nbytes);
-
-    //set kernel launch configuration
-    printf("set kernel launch configuration\n");
-    dim3 threads = dim3(THREADS, 1, 1);
-    dim3 blocks = dim3(BLOCKS, 1, 1);
 
     // create cuda event handles
     printf("create cuda event handles\n");

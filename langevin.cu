@@ -64,39 +64,42 @@ __global__ void numericalProcedure(double *d_concentration, double *d_velocityVa
 double *d_pdf_vel, double *d_w_autocorrelator, double *d_phi_autocorrelator,
 const input_params params, uint64_t size, uint64_t autocorr_size , curandState *state)
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    double L = params.BoxSize;
+    double a = params.a;
+    double r_bin = L / size;
+    double sqrt12 = sqrt((float)12);
+    double tau_invert = pow(L, 2) / (pow(a,2) * Re);
+    double tau = 1/tau_invert;
+    double dt = tau / 10;
+    double sqrt_dt = sqrt(dt);
+    double dt_tau_invert = dt * tau_invert;
+    double sqrt_dt_12 = sqrt_dt * sqrt12;
+
+    double dr = 0;
+    double w_r = 0;
+    double w_phi = 0;
+    double k_r1 = 0;
+    double k_r2 = 0;
+    double k_wr_1 = 0;
+    double k_wr_2 = 0;
+    double k_wphi_1 = 0;
+    double k_wphi_2 = 0;
+
+    uint64_t steps = params.numSteps;
+
+    double W1 = 0;
+    double W2 = 0;
+    double W3 = 0;
+    double W4 = 0;
+    double W5 = 0;
+    double W6 = 0;
+
+    int64_t ind = 0;
+
+    uint64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
     double r = params.BoxSize * curand_uniform(&localState);
     printf("idx = %i, r = %f\n", idx, r);
-
-    double dr = 0;
-    double phi = 0;
-    double w = 0;
-    double dphi = 0;
-    double dw = 0;
-    double kr1 = 0;
-    double kr2 = 0;
-    double kw1 = 0;
-    double kw2 = 0;
-    double kphi1 = 0;
-    double kphi2 = 0;
-    double sqrt12 = sqrt((float)12);
-    double sqrt_dt = 0;
-    double dt = 0;
-    double r_bin = params.BoxSize / size;
-    double W1 = 0;
-    double W2 = 0;
-    uint64_t numBins = size;
-    uint64_t ind = 0;
-    uint64_t ind_pdf = 0;
-
-    double tau_invert = pow(params.BoxSize, 2) / (pow(params.a,2) * Re);
-    double tau = 1/tau_invert;
-    double L = params.BoxSize;
-    dt = tau/10;
-    sqrt_dt = sqrt(dt);
-    double dt_tau_invert = dt * tau_invert;
-    double sqrt_dt_12 = sqrt_dt * sqrt12;
 
 #ifdef DEBUG
     printf("r=%f, sqrt_dt=%f, r_bin=%f, numBins=%i, ind=%i, tau^-1=%f, tau=%f, dt=%f\n", 
@@ -113,35 +116,47 @@ const input_params params, uint64_t size, uint64_t autocorr_size , curandState *
     {
         W1 = curand_uniform(&localState) - 0.5;
         W2 = curand_uniform(&localState) - 0.5;
-        
-        kr1 = dt * w * sin(phi);
+        W3 = curand_uniform(&localState) - 0.5;
+        W4 = curand_uniform(&localState) - 0.5;
+        W5 = curand_uniform(&localState) - 0.5;
+        W6 = curand_uniform(&localState) - 0.5;
 
-        kw1 = - dt_tau_invert * w + sqrt_dt_12 * W1 * sqrt(D(r, L));
+        k_r1 = dt * w_r;
 
-        kphi1 = Sigma(r) * pow(sin(phi),2) + sqrt_dt_12 * W2 * sqrt(M(r, L));
+        k_wr_1 = - dt_tau_invert * w_r + sqrt_dt * sqrt12 * (W1 * sqrt(D(r,L)) + (W2 * w_r + W3 * w_phi) * sqrt(M(r, L)));
 
-        kr2 = dt * (w + kw1) * sin(phi + kphi1);
+        k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt * sqrt12 * (W4 * sqrt(D(r,L)) + (W5 * w_r + W6 * w_phi) * sqrt(M(r,L))) - dt * w_r * Sigma(r);
 
-        kw2 = - dt_tau_invert * (w + kw1) + sqrt_dt_12 * W1 * sqrt(D(r + kr1, L));
+        k_r2 = dt * (w_r + k_wr_1);
 
-        kphi2 = Sigma(r + kr1) * pow(sin(phi + kphi1),2) + sqrt_dt_12 * W2 * sqrt(M(r+kr1, L));
+        k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt * sqrt12 * (W1 * sqrt(D(r+k_r1,L))
+         + (W2 * (w_r+k_wr_1) + W3 * (w_phi + k_wphi_1)) * sqrt(M(r + k_r1, L)));
 
-        dr = 0.5 * (kr1 + kr2);
-        dw = 0.5 * (kw1 + kw2);
-        dphi = 0.5 * (kphi1 + kphi2);
+        k_wphi_2 = -dt_tau_invert * (w_phi + k_wphi_1) 
+        + sqrt_dt * sqrt12 * (W4 * sqrt(D(r+k_r1,L)) 
+        + (W5 * (w_r + k_wr_1) + W6 * (w_phi + k_wphi_1)) * sqrt(M(r+k_r1,L))) 
+        - dt * (w_r + k_wr_1) * Sigma(r + k_r1);
+
+        dr = 0.5 * (k_r1 + k_r2);
+
+        w_r += 0.5 * (k_wr_1 + k_wr_2);
+        w_phi += 0.5 * (k_wphi_1 + k_wphi_2);
 
         if(r + dr > L)
+        {
             r = 2 * L - r - dr;
+            w_r *= -1;
+        }
         else if (r + dr < 0)
+        {
             r = - r - dr;
+            w_r *= -1;
+        }
         else
             r = r + dr;
 
-        w = abs(w + dw);
-        phi = phi + dphi;
-
 #ifdef CONCENTRATION
-        ind = min(uint64_t(r / r_bin), numBins-1);
+        ind = min(uint64_t(r / r_bin), size-1);
         d_concentration[ind]++;
 #endif // CONCENTRATION
     }
