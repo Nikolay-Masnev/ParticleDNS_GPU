@@ -28,23 +28,6 @@ __global__ void setup_kernel(curandState * state, unsigned long seed )
     curand_init(seed, id , 0, &state[id]);
 }
 
-// __global__ void calcCorr(std::vector<double> &W_BUFFER, std::vector<double> &autocorrelator)
-// {
-//     std::cout << "Here calcCorr\n";
-//     //uint64_t dt = uint64_t(maxTimeStep / autocorrelator.size()); // p точек через каждые dt
-//     const uint64_t dt = 1;
-//     const uint64_t autocorr_size = uint64_t(autocorrelator.size());
-//     const uint64_t buff_size =  uint64_t(W_BUFFER.size());
-
-//     for(uint64_t k = 0; k < autocorr_size; ++k)
-//     {
-//         for(uint64_t n = 0; n <buff_size - k * dt; ++n)
-//         {
-//             autocorrelator[k] += W_BUFFER[n] * W_BUFFER[n + k * dt];
-//         }
-//     }
-// }
-
 __device__ double Sigma(double r)
 {
     return 10 * (0.2 * tanh(0.5 * r) - 0.1 * tanh(0.1 * r));
@@ -60,9 +43,8 @@ __device__ double M(double r, double L)
     return sqrt(0.1 + pow(r/L, 2));
 }
 
-__global__ void numericalProcedure(double *d_concentration, double *d_velocityVariance,
-double *d_pdf_vel, double *d_w_autocorrelator, double *d_phi_autocorrelator,
-const input_params params, uint64_t size, uint64_t autocorr_size , curandState *state)
+__global__ void numericalProcedure(float *d_concentration,
+    const input_params params, const uint64_t size, curandState *state)
 {
     double L = params.BoxSize;
     double a = params.a;
@@ -94,26 +76,23 @@ const input_params params, uint64_t size, uint64_t autocorr_size , curandState *
     double W5 = 0;
     double W6 = 0;
 
-    int64_t ind = 0;
+    uint64_t ind = 0;
 
     uint64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
     double r = params.BoxSize * curand_uniform(&localState);
-    printf("idx = %i, r = %f\n", idx, r);
 
 #ifdef DEBUG
     printf("r=%f, sqrt_dt=%f, r_bin=%f, numBins=%i, ind=%i, tau^-1=%f, tau=%f, dt=%f\n", 
     r, sqrt_dt, r_bin, numBins, ind, tau_invert, tau, dt);
 #endif
 
-    double w_var = 0;
-    double w_r_var = 0;
-    uint64_t w_count = 0;
-
     curand_init(idx, 0, 0, &state[idx]);
 
-    for(uint64_t i = 1; i < params.numSteps; ++i)
-    {
+    __syncthreads();
+
+    for(uint64_t i = 0; i < steps; ++i)
+    {   
         W1 = curand_uniform(&localState) - 0.5;
         W2 = curand_uniform(&localState) - 0.5;
         W3 = curand_uniform(&localState) - 0.5;
@@ -123,17 +102,17 @@ const input_params params, uint64_t size, uint64_t autocorr_size , curandState *
 
         k_r1 = dt * w_r;
 
-        k_wr_1 = - dt_tau_invert * w_r + sqrt_dt * sqrt12 * (W1 * sqrt(D(r,L)) + (W2 * w_r + W3 * w_phi) * sqrt(M(r, L)));
+        k_wr_1 = - dt_tau_invert * w_r + sqrt_dt_12 * (W1 * sqrt(D(r,L)) + (W2 * w_r + W3 * w_phi) * sqrt(M(r, L)));
 
-        k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt * sqrt12 * (W4 * sqrt(D(r,L)) + (W5 * w_r + W6 * w_phi) * sqrt(M(r,L))) - dt * w_r * Sigma(r);
+        k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt_12 * (W4 * sqrt(D(r,L)) + (W5 * w_r + W6 * w_phi) * sqrt(M(r,L))) - dt * w_r * Sigma(r);
 
         k_r2 = dt * (w_r + k_wr_1);
 
-        k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt * sqrt12 * (W1 * sqrt(D(r+k_r1,L))
+        k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt_12 * (W1 * sqrt(D(r+k_r1,L))
          + (W2 * (w_r+k_wr_1) + W3 * (w_phi + k_wphi_1)) * sqrt(M(r + k_r1, L)));
 
         k_wphi_2 = -dt_tau_invert * (w_phi + k_wphi_1) 
-        + sqrt_dt * sqrt12 * (W4 * sqrt(D(r+k_r1,L)) 
+        + sqrt_dt_12 * (W4 * sqrt(D(r+k_r1,L)) 
         + (W5 * (w_r + k_wr_1) + W6 * (w_phi + k_wphi_1)) * sqrt(M(r+k_r1,L))) 
         - dt * (w_r + k_wr_1) * Sigma(r + k_r1);
 
@@ -157,9 +136,11 @@ const input_params params, uint64_t size, uint64_t autocorr_size , curandState *
 
 #ifdef CONCENTRATION
         ind = min(uint64_t(r / r_bin), size-1);
-        d_concentration[ind]++;
+        atomicAdd(&d_concentration[ind], float(1));
 #endif // CONCENTRATION
     }
+
+    __syncthreads();
 }
 
 

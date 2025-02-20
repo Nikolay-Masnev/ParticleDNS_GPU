@@ -16,11 +16,18 @@
 #define BLOCKS  1
 
 uint64_t nBins = 100;
-uint64_t autocorr_nBins = 1000;
 
-void normalizeArray(double* arr, uint64_t size)
+void printArray(float* arr, uint64_t size)
 {
-    double sum = 0;
+    for(uint64_t i = 0; i < size; ++i)
+    {
+        printf("%lli: %f\n", i, arr[i]);
+    }
+}
+
+void normalizeArray(float* arr, uint64_t size)
+{
+    float sum = 0;
 
     for(uint64_t i = 0; i < size; ++i)
     {
@@ -55,52 +62,21 @@ int main(int argc, char *argv[])
 
     // allocate HOST memory
     printf("allocate HOST memory\n");
-    uint64_t nbytes = nBins * sizeof(double);
-    uint64_t autocorr_nbytes = autocorr_nBins * sizeof(double);
+    uint64_t nbytes = nBins * sizeof(float);
 
-    double *concentration = 0;
-    double *velocityVariance = 0;
-    double *angleVariance = 0;
-    double *pdf_vel = 0;
-    double *w_autocorrelator = 0;
-    double *phi_autocorrelator = 0;
+    float *concentration = 0;
 
     checkCudaErrors(cudaMallocHost((void **)&concentration, nbytes));
-    checkCudaErrors(cudaMallocHost((void **)&velocityVariance, nbytes));
-    checkCudaErrors(cudaMallocHost((void **)&angleVariance, nbytes));
-    checkCudaErrors(cudaMallocHost((void **)&pdf_vel, nbytes));
-    checkCudaErrors(cudaMallocHost((void **)&w_autocorrelator, autocorr_nbytes));
-    checkCudaErrors(cudaMallocHost((void **)&phi_autocorrelator, autocorr_nbytes));
 
     memset(concentration, 0, nbytes);
-    memset(velocityVariance, 0, nbytes);
-    memset(angleVariance, 0, nbytes);
-    memset(pdf_vel, 0, nbytes);
-    memset(w_autocorrelator, 0, autocorr_nbytes);
-    memset(phi_autocorrelator, 0, autocorr_nbytes);
 
     // allocate DEVISE memory
     printf("allocate DEVISE memory\n");
-    double *d_concentration = 0;
-    double *d_velocityVariance = 0;
-    double *d_angleVariance = 0;
-    double *d_pdf_vel = 0;
-    double *d_w_autocorrelator = 0;
-    double *d_phi_autocorrelator = 0;
+    float *d_concentration = 0;
 
     checkCudaErrors(cudaMalloc((void **)&d_concentration, nbytes));
-    checkCudaErrors(cudaMalloc((void **)&d_velocityVariance, nbytes));
-    checkCudaErrors(cudaMalloc((void **)&d_angleVariance, nbytes));
-    checkCudaErrors(cudaMalloc((void **)&d_pdf_vel, nbytes));
-    checkCudaErrors(cudaMalloc((void **)&d_w_autocorrelator, autocorr_nbytes));
-    checkCudaErrors(cudaMalloc((void **)&d_phi_autocorrelator, autocorr_nbytes));
 
     cudaMemset(d_concentration, 0, nbytes);
-    cudaMemset(d_velocityVariance, 0, nbytes);
-    cudaMemset(d_angleVariance, 0, nbytes);
-    cudaMemset(d_pdf_vel, 0, nbytes);
-    cudaMemset(d_w_autocorrelator, 0, autocorr_nbytes);
-    cudaMemset(d_phi_autocorrelator, 0, autocorr_nbytes);
 
     // create cuda event handles
     printf("create cuda event handles\n");
@@ -123,11 +99,6 @@ int main(int argc, char *argv[])
     // copy data from host to devise
     printf("copy data from host to devise\n");
     cudaMemcpy(d_concentration, concentration, nbytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_velocityVariance, velocityVariance, nbytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_angleVariance, angleVariance, nbytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_pdf_vel, pdf_vel, nbytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_w_autocorrelator, w_autocorrelator, autocorr_nbytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_phi_autocorrelator, phi_autocorrelator, autocorr_nbytes, cudaMemcpyHostToDevice);
 
     //start
     printf("start\n");
@@ -138,15 +109,10 @@ int main(int argc, char *argv[])
 
     // main loop
     printf("main loop\n");
-    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, d_velocityVariance, d_pdf_vel, 
-    d_w_autocorrelator, d_phi_autocorrelator, data,  nBins,  autocorr_nBins , devState);
+    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState);
     checkCudaErrors(cudaDeviceSynchronize());
 
     cudaMemcpy(concentration, d_concentration, nbytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(velocityVariance, d_velocityVariance, nbytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(pdf_vel, d_pdf_vel, nbytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(w_autocorrelator, d_w_autocorrelator, autocorr_nbytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(phi_autocorrelator, d_phi_autocorrelator, autocorr_nbytes, cudaMemcpyDeviceToHost);
 
     // stop
     printf("stop\n");
@@ -165,39 +131,29 @@ int main(int argc, char *argv[])
 
     printf("time spent executing by the GPU: %.2f\n", gpu_time);
 
-    // norm pdf
-    printf("norm pdf\n");
-    normalizeArray(concentration, nBins);
-    //normalizeArray(velocityVariance, nBins);
-    //normalizeArray(pdf_vel, nBins);
+    checkCudaErrors(cudaDeviceSynchronize());
 
-    //normalizeArray(w_autocorrelator, autocorr_nBins);
-    //normalizeArray(phi_autocorrelator, autocorr_nBins);
+    // normalize
+    uint64_t sum = 0;
+
+    for(uint64_t i = 0; i < uint64_t(nBins); ++i)
+    {
+        sum+= uint64_t(concentration[i]);
+    }
+
+    printf("sum = %lli\n", sum);
+
+    normalizeArray(concentration, nBins);
 
     // save distribution
     printf("save dist\n");
     saveHist(concentration, argv[2], nBins);
-    //saveHist(velocityVariance, argv[3], nBins);
-    //saveHist(pdf_vel, argv[4], nBins);
-
-    //saveHist(w_autocorrelator, argv[5], autocorr_nBins);
-    //saveHist(phi_autocorrelator, argv[6], autocorr_nBins);
 
     // free memory
     checkCudaErrors(cudaEventDestroy(start));
     checkCudaErrors(cudaEventDestroy(stop));
     checkCudaErrors(cudaFreeHost(concentration));
-    checkCudaErrors(cudaFreeHost(velocityVariance));
-    checkCudaErrors(cudaFreeHost(pdf_vel));
-    checkCudaErrors(cudaFreeHost(w_autocorrelator));
-    checkCudaErrors(cudaFreeHost(phi_autocorrelator));
-
     checkCudaErrors(cudaFree(d_concentration));
-    checkCudaErrors(cudaFree(d_velocityVariance));
-    checkCudaErrors(cudaFree(d_pdf_vel));
-    checkCudaErrors(cudaFree(d_w_autocorrelator));
-    checkCudaErrors(cudaFree(d_phi_autocorrelator));
-
     checkCudaErrors(cudaFree(devState));
 
     return EXIT_SUCCESS;

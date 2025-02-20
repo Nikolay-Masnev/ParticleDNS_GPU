@@ -112,7 +112,7 @@ void printParams(const input_params &params)
     std::cout << "a = " << params.a << '\n';
 }
 
-void saveHist(double *concentration, const std::string & path, int size)
+void saveHist(float *concentration, const std::string & path, int size)
 {
     std::ofstream file (path);
     if (file.is_open())
