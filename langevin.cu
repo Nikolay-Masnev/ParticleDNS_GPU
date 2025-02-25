@@ -16,10 +16,10 @@ __constant__ uint64_t BUFFER_SIZE = 1e7;
 __constant__ double maxTimeStep = 1e5;
 __constant__ double twoPi = 2.0 * 3.141592865358979;
 
-__device__ void printArray( double *v, int size)
+__device__ void printArray( uint64_t *v, int size)
 {
     for(int i = 0; i < size; ++i)
-        printf("%f\n", v[i]);
+        printf("%lli\n", v[i]);
 }
 
 __global__ void setup_kernel(curandState * state, unsigned long seed )
@@ -43,7 +43,7 @@ __device__ double M(double r, double L)
     return sqrt(0.1 + pow(r/L, 2));
 }
 
-__global__ void numericalProcedure(float *d_concentration,
+__global__ void numericalProcedure(uint64_t *d_concentration,
     const input_params params, const uint64_t size, curandState *state)
 {
     double L = params.BoxSize;
@@ -73,19 +73,12 @@ __global__ void numericalProcedure(float *d_concentration,
     double W2 = 0;
     double W3 = 0;
     double W4 = 0;
-    double W5 = 0;
-    double W6 = 0;
 
     uint64_t ind = 0;
 
     uint64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
     double r = params.BoxSize * curand_uniform(&localState);
-
-#ifdef DEBUG
-    printf("r=%f, sqrt_dt=%f, r_bin=%f, numBins=%i, ind=%i, tau^-1=%f, tau=%f, dt=%f\n", 
-    r, sqrt_dt, r_bin, numBins, ind, tau_invert, tau, dt);
-#endif
 
     curand_init(idx, 0, 0, &state[idx]);
 
@@ -97,24 +90,19 @@ __global__ void numericalProcedure(float *d_concentration,
         W2 = curand_uniform(&localState) - 0.5;
         W3 = curand_uniform(&localState) - 0.5;
         W4 = curand_uniform(&localState) - 0.5;
-        W5 = curand_uniform(&localState) - 0.5;
-        W6 = curand_uniform(&localState) - 0.5;
 
         k_r1 = dt * w_r;
 
-        k_wr_1 = - dt_tau_invert * w_r + sqrt_dt_12 * (W1 * sqrt(D(r,L)) + (W2 * w_r + W3 * w_phi) * sqrt(M(r, L)));
+        k_wr_1 = - dt_tau_invert * w_r + sqrt_dt_12 * W1 * sqrt(D(r,L));
 
-        k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt_12 * (W4 * sqrt(D(r,L)) + (W5 * w_r + W6 * w_phi) * sqrt(M(r,L))) - dt * w_r * Sigma(r);
+        k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt_12 * W2 * sqrt(D(r,L)) - dt * w_r * Sigma(r);
 
         k_r2 = dt * (w_r + k_wr_1);
 
-        k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt_12 * (W1 * sqrt(D(r+k_r1,L))
-         + (W2 * (w_r+k_wr_1) + W3 * (w_phi + k_wphi_1)) * sqrt(M(r + k_r1, L)));
+        k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt_12 * W3 * sqrt(D(r+k_r1,L));
 
         k_wphi_2 = -dt_tau_invert * (w_phi + k_wphi_1) 
-        + sqrt_dt_12 * (W4 * sqrt(D(r+k_r1,L)) 
-        + (W5 * (w_r + k_wr_1) + W6 * (w_phi + k_wphi_1)) * sqrt(M(r+k_r1,L))) 
-        - dt * (w_r + k_wr_1) * Sigma(r + k_r1);
+        + sqrt_dt_12 * W4 * sqrt(D(r+k_r1,L))  - dt * (w_r + k_wr_1) * Sigma(r + k_r1);
 
         dr = 0.5 * (k_r1 + k_r2);
 
@@ -136,7 +124,7 @@ __global__ void numericalProcedure(float *d_concentration,
 
 #ifdef CONCENTRATION
         ind = min(uint64_t(r / r_bin), size-1);
-        atomicAdd(&d_concentration[ind], float(1));
+        atomicAdd(&d_concentration[ind], 1);
 #endif // CONCENTRATION
     }
 

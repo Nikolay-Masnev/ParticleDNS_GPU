@@ -25,35 +25,23 @@ void printArray(float* arr, uint64_t size)
     }
 }
 
-void normalizeArray(float* arr, uint64_t size)
+void normalizeArray(float* arr, uint64_t* uint_arr, uint64_t size)
 {
-    float sum = 0;
+    uint64_t sum = 0;
 
     for(uint64_t i = 0; i < size; ++i)
     {
-        sum+=arr[i];
+        sum+=uint_arr[i];
     }
 
     for(uint64_t i = 0; i < size; ++i)
     {
-        arr[i] /= sum;
+        arr[i] =float(uint_arr[i]) / sum;
     }
 }
 
 int main(int argc, char *argv[])
 { 
-    int devID;
-    cudaDeviceProp deviceProps;
-
-    printf("[%s] - Starting...\n", argv[0]);
-
-    // This will pick the best possible CUDA capable device
-    devID = findCudaDevice(argc, (const char **)argv);
-
-    // get device name
-    checkCudaErrors(cudaGetDeviceProperties(&deviceProps, devID));
-    printf("CUDA device [%s]\n", deviceProps.name);
-
     // reading params
     printf("reading params\n");
     std::string paramsPath(argv[1]);
@@ -62,21 +50,20 @@ int main(int argc, char *argv[])
 
     // allocate HOST memory
     printf("allocate HOST memory\n");
-    uint64_t nbytes = nBins * sizeof(float);
-
+    uint64_t nbytes = nBins * sizeof(float);    
     float *concentration = 0;
-
     checkCudaErrors(cudaMallocHost((void **)&concentration, nbytes));
-
     memset(concentration, 0, nbytes);
+
+    uint64_t *uint64_t_concentration = 0;
+    checkCudaErrors(cudaMallocHost((void **)&uint64_t_concentration, nBins * sizeof(uint64_t)));
+    memset(concentration, 0, nBins * sizeof(uint64_t));
 
     // allocate DEVISE memory
     printf("allocate DEVISE memory\n");
-    float *d_concentration = 0;
-
-    checkCudaErrors(cudaMalloc((void **)&d_concentration, nbytes));
-
-    cudaMemset(d_concentration, 0, nbytes);
+    uint64_t *d_concentration = 0;
+    checkCudaErrors(cudaMalloc((void **)&d_concentration, nBins * sizeof(uint64_t)));
+    cudaMemset(d_concentration, 0, nBins * sizeof(uint64_t));
 
     // create cuda event handles
     printf("create cuda event handles\n");
@@ -98,7 +85,7 @@ int main(int argc, char *argv[])
 
     // copy data from host to devise
     printf("copy data from host to devise\n");
-    cudaMemcpy(d_concentration, concentration, nbytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_concentration, uint64_t_concentration, nBins * sizeof(uint64_t), cudaMemcpyHostToDevice);
 
     //start
     printf("start\n");
@@ -111,8 +98,7 @@ int main(int argc, char *argv[])
     printf("main loop\n");
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState);
     checkCudaErrors(cudaDeviceSynchronize());
-
-    cudaMemcpy(concentration, d_concentration, nbytes, cudaMemcpyDeviceToHost);
+    cudaMemcpy(uint64_t_concentration, d_concentration, nBins * sizeof(uint64_t), cudaMemcpyDeviceToHost);
 
     // stop
     printf("stop\n");
@@ -136,14 +122,14 @@ int main(int argc, char *argv[])
     // normalize
     uint64_t sum = 0;
 
-    for(uint64_t i = 0; i < uint64_t(nBins); ++i)
+    for(int i = 0; i < nBins; ++i)
     {
-        sum+= uint64_t(concentration[i]);
+        sum += uint64_t_concentration[i];
     }
 
     printf("sum = %lli\n", sum);
 
-    normalizeArray(concentration, nBins);
+    normalizeArray(concentration, uint64_t_concentration,nBins);
 
     // save distribution
     printf("save dist\n");
@@ -153,6 +139,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaEventDestroy(start));
     checkCudaErrors(cudaEventDestroy(stop));
     checkCudaErrors(cudaFreeHost(concentration));
+    checkCudaErrors(cudaFreeHost(uint64_t_concentration));
     checkCudaErrors(cudaFree(d_concentration));
     checkCudaErrors(cudaFree(devState));
 
