@@ -8,17 +8,11 @@
 #include "helper_cuda.h"
 #include "helper_functions.h" 
 
-__constant__ double r_pdf = 3;
-__constant__ double dr_pdf = 0.1;
-__constant__ double w_max = 1;
 __constant__ double Re = 2500;
-__constant__ uint64_t BUFFER_SIZE = 1e7;
-__constant__ double maxTimeStep = 1e5;
-__constant__ double twoPi = 2.0 * 3.141592865358979;
 
-__device__ void printArray( uint64_t *v, int size)
+__device__ void printArray( uint64_t *v, unsigned long long int size)
 {
-    for(int i = 0; i < size; ++i)
+    for(unsigned long long int i = 0; i < size; ++i)
         printf("%lli\n", v[i]);
 }
 
@@ -40,11 +34,16 @@ __device__ double D(double r, double L)
 
 __device__ double M(double r, double L)
 {
-    return sqrt(0.1 + pow(r/L, 2));
+    return 1e-6 * (1 + 1e4 * pow(r/L, 2) );
 }
 
-__global__ void numericalProcedure(uint64_t *d_concentration,
-    const input_params params, const uint64_t size, curandState *state)
+__device__ double tau_corr(double r, double L)
+{
+    return 1/sqrt(15 * M(r, L));
+}
+
+__global__ void numericalProcedure(unsigned long long int *d_concentration,
+    const input_params params, const unsigned long long int size, curandState *state)
 {
     double L = params.BoxSize;
     double a = params.a;
@@ -67,16 +66,11 @@ __global__ void numericalProcedure(uint64_t *d_concentration,
     double k_wphi_1 = 0;
     double k_wphi_2 = 0;
 
-    uint64_t steps = params.numSteps;
+    unsigned long long int steps = params.numSteps;
 
-    double W1 = 0;
-    double W2 = 0;
-    double W3 = 0;
-    double W4 = 0;
+    unsigned long long int ind = 0;
 
-    uint64_t ind = 0;
-
-    uint64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned long long int idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
     double r = params.BoxSize * curand_uniform(&localState);
 
@@ -84,12 +78,32 @@ __global__ void numericalProcedure(uint64_t *d_concentration,
 
     __syncthreads();
 
-    for(uint64_t i = 0; i < steps; ++i)
+    double W1 = 0;
+    double W2 = 0;
+    double W3 = 0;
+    double W4 = 0;
+    double W1_old = 0;
+    double W2_old = 0;
+    double W3_old = 0;
+    double W4_old = 0;
+
+    double rho = 0;
+    double sqrt_one_rho = 0;
+
+    for(unsigned long long int i = 0; i < steps; ++i)
     {   
-        W1 = curand_uniform(&localState) - 0.5;
-        W2 = curand_uniform(&localState) - 0.5;
-        W3 = curand_uniform(&localState) - 0.5;
-        W4 = curand_uniform(&localState) - 0.5;
+        rho = exp(-dt/tau_corr(r, L));
+        sqrt_one_rho = sqrt(1 - rho * rho);
+
+        W1 = W1_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W2 = W2_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W3 = W3_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W4 = W4_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+
+        W1_old = W1;
+        W2_old = W2;
+        W3_old = W3;
+        W4_old = W4;
 
         k_r1 = dt * w_r;
 
@@ -123,7 +137,7 @@ __global__ void numericalProcedure(uint64_t *d_concentration,
             r = r + dr;
 
 #ifdef CONCENTRATION
-        ind = min(uint64_t(r / r_bin), size-1);
+        ind = min(unsigned long long int(r / r_bin), size-1);
         atomicAdd(&d_concentration[ind], 1);
 #endif // CONCENTRATION
     }

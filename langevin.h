@@ -10,7 +10,7 @@
 
 __global__ void setup_kernel(curandState * state, unsigned long seed );
 
-__global__ void numericalProcedure(uint64_t *d_concentration,
-const input_params params, const uint64_t size, curandState *state);
+__global__ void numericalProcedure(unsigned long long int *d_concentration,
+const input_params params, const unsigned long long int size, curandState *state);
 
 #endif /* LANGEVIN_H */

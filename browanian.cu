@@ -13,28 +13,28 @@
 #include "langevin.h"
 
 #define THREADS 1000
-#define BLOCKS  1
+#define BLOCKS  10
 
-uint64_t nBins = 100;
+unsigned long long int nBins = 1000;
 
-void printArray(float* arr, uint64_t size)
+void printArray(float* arr, unsigned long long int size)
 {
-    for(uint64_t i = 0; i < size; ++i)
+    for(unsigned long long int i = 0; i < size; ++i)
     {
         printf("%lli: %f\n", i, arr[i]);
     }
 }
 
-void normalizeArray(float* arr, uint64_t* uint_arr, uint64_t size)
+void normalizeArray(float* arr, unsigned long long int* uint_arr, unsigned long long int size)
 {
-    uint64_t sum = 0;
+    unsigned long long int sum = 0;
 
-    for(uint64_t i = 0; i < size; ++i)
+    for(unsigned long long int i = 0; i < size; ++i)
     {
         sum+=uint_arr[i];
     }
 
-    for(uint64_t i = 0; i < size; ++i)
+    for(unsigned long long int i = 0; i < size; ++i)
     {
         arr[i] =float(uint_arr[i]) / sum;
     }
@@ -55,15 +55,15 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaMallocHost((void **)&concentration, nbytes));
     memset(concentration, 0, nbytes);
 
-    uint64_t *uint64_t_concentration = 0;
-    checkCudaErrors(cudaMallocHost((void **)&uint64_t_concentration, nBins * sizeof(uint64_t)));
-    memset(concentration, 0, nBins * sizeof(uint64_t));
+    unsigned long long int *uint64_t_concentration = 0;
+    checkCudaErrors(cudaMallocHost((void **)&uint64_t_concentration, nBins * sizeof(unsigned long long int)));
+    memset(concentration, 0, nBins * sizeof(unsigned long long int));
 
     // allocate DEVISE memory
     printf("allocate DEVISE memory\n");
-    uint64_t *d_concentration = 0;
-    checkCudaErrors(cudaMalloc((void **)&d_concentration, nBins * sizeof(uint64_t)));
-    cudaMemset(d_concentration, 0, nBins * sizeof(uint64_t));
+    unsigned long long int *d_concentration = 0;
+    checkCudaErrors(cudaMalloc((void **)&d_concentration, nBins * sizeof(unsigned long long int)));
+    cudaMemset(d_concentration, 0, nBins * sizeof(unsigned long long int));
 
     // create cuda event handles
     printf("create cuda event handles\n");
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 
     // copy data from host to devise
     printf("copy data from host to devise\n");
-    cudaMemcpy(d_concentration, uint64_t_concentration, nBins * sizeof(uint64_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_concentration, uint64_t_concentration, nBins * sizeof(unsigned long long int), cudaMemcpyHostToDevice);
 
     //start
     printf("start\n");
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     printf("main loop\n");
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState);
     checkCudaErrors(cudaDeviceSynchronize());
-    cudaMemcpy(uint64_t_concentration, d_concentration, nBins * sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(uint64_t_concentration, d_concentration, nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
 
     // stop
     printf("stop\n");
@@ -120,9 +120,9 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaDeviceSynchronize());
 
     // normalize
-    uint64_t sum = 0;
+    unsigned long long int sum = 0;
 
-    for(int i = 0; i < nBins; ++i)
+    for(unsigned long long int i = 0; i < nBins; ++i)
     {
         sum += uint64_t_concentration[i];
     }
