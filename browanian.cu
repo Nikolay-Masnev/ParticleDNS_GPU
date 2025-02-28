@@ -13,7 +13,7 @@
 #include "langevin.h"
 
 #define THREADS 1000
-#define BLOCKS  10
+#define BLOCKS  1000
 
 unsigned long long int nBins = 1000;
 

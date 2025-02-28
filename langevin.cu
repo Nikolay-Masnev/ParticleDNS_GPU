@@ -137,7 +137,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
             r = r + dr;
 
 #ifdef CONCENTRATION
-        ind = min(unsigned long long int(r / r_bin), size-1);
+        ind = min(int(r / r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
 #endif // CONCENTRATION
     }
