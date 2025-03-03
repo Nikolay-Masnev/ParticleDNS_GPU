@@ -32,6 +32,11 @@ __device__ double D(double r, double L)
     return 10 * sqrt(0.1 + pow(r/L, 2));
 }
 
+__device__ double K(double r, double L)
+{
+    return sqrt(0.1 + pow(r/L, 2));
+}
+
 __device__ double M(double r, double L)
 {
     return 1e-6 * (1 + 1e4 * pow(r/L, 2) );
@@ -82,10 +87,12 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double W2 = 0;
     double W3 = 0;
     double W4 = 0;
+    double W5 = 0;
     double W1_old = 0;
     double W2_old = 0;
     double W3_old = 0;
     double W4_old = 0;
+    double W5_old = 0;
 
     double rho = 0;
     double sqrt_one_rho = 0;
@@ -99,19 +106,21 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         W2 = W2_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W3 = W3_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W4 = W4_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W5 = W5_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
 
         W1_old = W1;
         W2_old = W2;
         W3_old = W3;
         W4_old = W4;
+        W5_old = W5;
 
-        k_r1 = dt * w_r;
+        k_r1 = dt * w_r + sqrt_dt_12 * W5 * sqrt(K(r, L));
 
         k_wr_1 = - dt_tau_invert * w_r + sqrt_dt_12 * W1 * sqrt(D(r,L));
 
         k_wphi_1 = -dt_tau_invert * w_phi + sqrt_dt_12 * W2 * sqrt(D(r,L)) - dt * w_r * Sigma(r);
 
-        k_r2 = dt * (w_r + k_wr_1);
+        k_r2 = dt * (w_r + k_wr_1) + sqrt_dt_12 * W5 * sqrt(K(r+k_r1, L));
 
         k_wr_2 = - dt_tau_invert * (w_r + k_wr_1) + sqrt_dt_12 * W3 * sqrt(D(r+k_r1,L));
 
