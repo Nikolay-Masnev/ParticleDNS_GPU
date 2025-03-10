@@ -6,7 +6,6 @@
 #include <curand_kernel.h>
 
 #define CONCENTRATION
-//#define DEBUG
 
 __global__ void setup_kernel(curandState * state, unsigned long seed );
 

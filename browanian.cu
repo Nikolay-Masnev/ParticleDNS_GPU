@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 
     // allocate HOST memory
     printf("allocate HOST memory\n");
-    uint64_t nbytes = nBins * sizeof(float);    
+    uint64_t nbytes = nBins * sizeof(float);
     float *concentration = 0;
     checkCudaErrors(cudaMallocHost((void **)&concentration, nbytes));
     memset(concentration, 0, nbytes);

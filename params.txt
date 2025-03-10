@@ -1,5 +1,5 @@
 a = 0.1
 BoxSize = 50
 r0 = 40
-steps = 1e6
+steps = 1e7
 dt = 1e-1
