@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <iomanip>
 
 std::vector<std::string> split_sentence(const std::string sen);
 ParamType readToken(std::string &token);
@@ -118,7 +119,7 @@ void saveHist(float *concentration, const std::string & path, int size)
     if (file.is_open())
     {
         for(int count = 0; count < size; count ++){
-            file << concentration[count] << " " ;
+            file << std::setprecision(10) << concentration[count] << " ";
         }
 
     file.close();
