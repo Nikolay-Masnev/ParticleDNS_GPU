@@ -16,7 +16,7 @@
 #define BLOCKS  1
 
 unsigned long long int nBins = 1000;
-unsigned long long int tr_points = 1e3;
+unsigned long long int tr_points = 1e4;
 
 void printArray(float* arr, unsigned long long int size)
 {
@@ -89,10 +89,10 @@ int main(int argc, char *argv[])
     float *d_tr_wx = 0;
     float *d_tr_wy = 0;
     
-    checkCudaErrors(cudaMalloc((void **)&d_tr_x, tr_nbytes);
-    checkCudaErrors(cudaMalloc((void **)&d_tr_y, tr_nbytes);
-    checkCudaErrors(cudaMalloc((void **)&d_tr_wx, tr_nbytes);
-    checkCudaErrors(cudaMalloc((void **)&d_tr_wy, tr_nbytes);
+    checkCudaErrors(cudaMalloc((void **)&d_tr_x, tr_nbytes));
+    checkCudaErrors(cudaMalloc((void **)&d_tr_y, tr_nbytes));
+    checkCudaErrors(cudaMalloc((void **)&d_tr_wx, tr_nbytes));
+    checkCudaErrors(cudaMalloc((void **)&d_tr_wy, tr_nbytes));
     
     cudaMemset(d_tr_x, 0, tr_nbytes);
     cudaMemset(d_tr_y, 0, tr_nbytes);
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 #ifdef TRAJECTORY
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points);
 #else 
-    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState);
+    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, NULL, NULL, NULL, NULL, NULL);
 #endif /* TRAJECTORY */
 
     checkCudaErrors(cudaDeviceSynchronize());

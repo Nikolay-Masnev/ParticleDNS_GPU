@@ -119,7 +119,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         W5 = W5_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W6 = W6_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
        	W7 = W7_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-	W8 = W8_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+	    W8 = W8_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W1_old = W1;
         W2_old = W2;
         W3_old = W3;
@@ -129,8 +129,8 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         W7_old = W7;
         W8_old = W8;
         
-        kx_1 = dt * w_x + sqrt_dt_12 * W5 * sqrt(D(r, L));
-        ky_1 = dt * w_y + sqrt_dt_12 * W6 * sqrt(D(r, L));
+        kx_1 = 0 * dt * w_x + sqrt_dt_12 * W5 * sqrt(D(r, L));
+        ky_1 = 0 * dt * w_y + sqrt_dt_12 * W6 * sqrt(D(r, L));
         kwx_1 = - dt_tau_invert * w_x + sqrt_dt_12 * W1 * sqrt(D(r,L));
         kwy_1 = - dt_tau_invert * w_y + sqrt_dt_12 * W2 * sqrt(D(r,L));
 
@@ -199,7 +199,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
             d_tr_wx[i] = w_x;
             d_tr_wy[i] = w_y;
         }
-#endif TRAJECTORY
+#endif // TRAJECTORY
     }
 
     __syncthreads();
