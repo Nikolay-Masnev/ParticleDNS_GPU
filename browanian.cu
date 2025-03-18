@@ -12,8 +12,8 @@
 #include "input_params.h"
 #include "langevin.h"
 
-#define THREADS 1
-#define BLOCKS  1
+#define THREADS 1000
+#define BLOCKS  100
 
 unsigned long long int nBins = 1000;
 unsigned long long int tr_points = 1e4;

@@ -9,6 +9,7 @@
 #include "helper_functions.h" 
 
 __constant__ double Re = 2500;
+#define  M_PI  3.14159265358979323846
 
 __device__ void printArray( uint64_t *v, unsigned long long int size)
 {
@@ -29,7 +30,8 @@ __device__ double Sigma(double r)
 
 __device__ double D(double r, double L)
 {
-    return 0.01 * sqrt(0.1 + pow(r/L, 2));
+    //return 0.01 * sqrt(0.1 + pow(r/L, 2));
+    return 0.1;
 }
 
 __device__ double M(double r, double L)
@@ -60,11 +62,13 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double sqrt_dt = sqrt(dt);
     double dt_tau_invert = dt * tau_invert;
     double sqrt_dt_12 = sqrt_dt * sqrt12;
-    double dx, dy, w_x, w_y, kx_1, kx_2, ky_1, ky_2, 
+    double dx, dy, dw_x, dw_y, w_x, w_y, kx_1, kx_2, ky_1, ky_2, 
     kwx_1, kwx_2, kwy_1, kwy_2;
 
     dx = 0;
     dy = 0;
+    dw_x = 0;
+    dw_y = 0;
     w_x = 0;
     w_y = 0;
     kx_1 = 0;
@@ -79,9 +83,14 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
 
-    double x = L * (curand_uniform(&localState) - 0.5);
-    double y = L * (curand_uniform(&localState) - 0.5);
-    double r = sqrt(x*x + y*y);
+    //double x = L * (curand_uniform(&localState) - 0.5);
+    //double y = L * (curand_uniform(&localState) - 0.5);
+    //double r = sqrt(x*x + y*y);
+
+    double r = 0.5 * L * curand_uniform(&localState);
+    double phi = 2 * M_PI * curand_uniform(&localState);
+    double x = r * cos(phi);
+    double y = r * sin(phi);
 
     double W1 = 0;
     double W2 = 0;
@@ -119,7 +128,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         W5 = W5_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W6 = W6_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
        	W7 = W7_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-	    W8 = W8_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+	W8 = W8_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W1_old = W1;
         W2_old = W2;
         W3_old = W3;
@@ -140,55 +149,35 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         ky_2 = 0 * dt * (w_y + kwy_1) + sqrt_dt_12 * W8 * sqrt(D(r, L));
         kwx_2 = - dt_tau_invert * (w_x + kwx_1) + sqrt_dt_12 * W3 * sqrt(D(r,L));
         kwy_2 = - dt_tau_invert * (w_y + kwy_1) + sqrt_dt_12 * W4 * sqrt(D(r,L));
+	
+	dx = 0.5 * (kx_1 + kx_2);
+	dy = 0.5 * (ky_1 + ky_2);
+	dw_x = 0.5 * (kwx_1 + kwx_2);
+	dw_y = 0.5 * (kwy_1 + kwy_2);
 
-        dx = 0.5 * (kx_1 + kx_2);
-        dy = 0.5 * (ky_1 + ky_2);
-        w_x += 0.5 * (kwx_1 + kwx_2);
-        w_y += 0.5 * (kwy_1 + kwy_2);
+        x += dx;
+        y += dy;
+        w_x += dw_x;
+        w_y += dw_y;
 
-        if(x + dx > L/2)
-        {
-            x = L - x - dx;
-            w_x *= -1;
-            W1 *= -1;
-            W3 *= -1;
-        }
-        else if (x + dx < -L/2)
-        {
-            x = -L  - x - dx;
-	        w_x *= -1;
-	        W1 *= -1;
-            W3 *= -1;
-        }
-        else
-        {
-            x += dx;
-        }
-        
-        if(y + dy > L/2)
-        {
-            y = L - y - dy;
-            w_y *= -1;
-            W2 *= -1;
-            W4 *= -1;
-        }
-        else if (y + dy < -L/2)
-        {
-            y = -L  - y - dy;
-	        w_y *= -1;
-	        W2 *= -1;
-            W4 *= -1;
-        }
-        else
-        {
-            y += dy;
-        }
+	r = sqrt(x*x + y*y);
 
-        r = sqrt(abs(x*x + y*y));
+	if(r > L/2)
+	{
+	    x -= dx;
+	    y -= dy;
+	    x += (8 * x * y * dy) / (L*L) - (4*(x*x -y*y)*dx)/(L*L);
+	    y += (4*(x*x - y*y)*dy)/(L*L) + (8*x*y*dy)/(L*L);
+	    w_x = (8 * x * y * w_y) / (L*L) - (4*(x*x -y*y)*w_x)/(L*L);
+	    w_y = (4*(x*x - y*y)*w_x)/(L*L) + (8*x*y*w_y)/(L*L); 
+	}
 
 #ifdef CONCENTRATION
         ind = min(int(r / r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
+
+	if(int(r/r_bin) > size)
+		printf("ERROR!!!\n");
 #endif // CONCENTRATION
 
 #ifdef TRAJECTORY
