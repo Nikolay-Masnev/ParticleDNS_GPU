@@ -30,8 +30,12 @@ __device__ double Sigma(double r)
 
 __device__ double D(double r, double L)
 {
-    //return 0.01 * sqrt(0.1 + pow(r/L, 2));
-    return 0.1;
+    return 0.1 * (1 + pow(r/L, 2));
+}
+
+__device__ double div_D(double x, double y, double L)
+{
+    return 0.1 * (x + y) / (2 * L * L);
 }
 
 __device__ double M(double r, double L)
@@ -54,7 +58,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 
     double L = params.BoxSize;
     double a = params.a;
-    double r_bin = L / size / 2;
+    double r_bin = L / size;
     double sqrt12 = sqrt((float)12);
     double tau_invert = pow(L, 2) / (pow(a,2) * Re);
     double tau = 1/tau_invert;
@@ -62,53 +66,36 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double sqrt_dt = sqrt(dt);
     double dt_tau_invert = dt * tau_invert;
     double sqrt_dt_12 = sqrt_dt * sqrt12;
-    double dx, dy, dw_x, dw_y, w_x, w_y, kx_1, kx_2, ky_1, ky_2, 
-    kwx_1, kwx_2, kwy_1, kwy_2;
 
-    dx = 0;
-    dy = 0;
-    dw_x = 0;
-    dw_y = 0;
-    w_x = 0;
-    w_y = 0;
-    kx_1 = 0;
-    kx_2 = 0;
-    ky_1 = 0;
-    ky_2 = 0;
-    kwx_1 = 0;
-    kwx_2 = 0;
-    kwy_1 = 0;
-    kwy_2 = 0;
+    double dx = 0, dy = 0, dw_x = 0, dw_y = 0, x = 0, y = 0, w_x = 0, w_y = 0, r = 0, phi = 0;
+    double c_x_0 = 0, c_x_1 = 0, b_x_0 = 0, b_x_1 = 0, b_x_2 = 0, b_x_3 = 0;
+    double c_y_0 = 0, c_y_1 = 0, b_y_0 = 0, b_y_1 = 0, b_y_2 = 0, b_y_3 = 0;
+    double c_wx_0 = 0, c_wx_1 = 0, b_wx_0 = 0, b_wx_1 = 0, b_wx_2 = 0, b_wx_3 = 0;
+    double c_wy_0 = 0, c_wy_1 = 0, b_wy_0 = 0, b_wy_1 = 0, b_wy_2 = 0, b_wy_3 = 0;
 
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
 
-    //double x = L * (curand_uniform(&localState) - 0.5);
-    //double y = L * (curand_uniform(&localState) - 0.5);
-    //double r = sqrt(x*x + y*y);
-
-    double r = 0.5 * L * curand_uniform(&localState);
-    double phi = 2 * M_PI * curand_uniform(&localState);
-    double x = r * cos(phi);
-    double y = r * sin(phi);
+    r = L * curand_uniform(&localState);
+    phi = 2 * M_PI * curand_uniform(&localState);
+    x = r * cos(phi);
+    y = r * sin(phi);
 
     double W1 = 0;
     double W2 = 0;
     double W3 = 0;
     double W4 = 0;
-    double W5 = 0;
-    double W6 = 0;
-    double W7 = 0;
-    double W8 = 0;
+
     double W1_old = 0;
     double W2_old = 0;
     double W3_old = 0;
     double W4_old = 0;
-    double W5_old = 0;
-    double W6_old = 0;
-    double W7_old = 0;
-    double W8_old = 0;
     
+    double dW1 = 0;
+    double dW2 = 0;
+    double dW3 = 0;
+    double dW4 = 0;
+
     double rho = 0;
     double sqrt_one_rho = 0;
 
@@ -121,63 +108,67 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         rho = 0;
         sqrt_one_rho = 1;
 
-        W1 = W1_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-        W2 = W2_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-        W3 = W3_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-        W4 = W4_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-        W5 = W5_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-        W6 = W6_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-       	W7 = W7_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
-	W8 = W8_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
         W1_old = W1;
         W2_old = W2;
         W3_old = W3;
         W4_old = W4;
-        W5_old = W5;
-        W6_old = W6;
-        W7_old = W7;
-        W8_old = W8;
-        
-        kx_1 = 0 * dt * w_x + sqrt_dt_12 * W5 * sqrt(D(r, L));
-        ky_1 = 0 * dt * w_y + sqrt_dt_12 * W6 * sqrt(D(r, L));
-        kwx_1 = - dt_tau_invert * w_x + sqrt_dt_12 * W1 * sqrt(D(r,L));
-        kwy_1 = - dt_tau_invert * w_y + sqrt_dt_12 * W2 * sqrt(D(r,L));
 
-        r = sqrt((x+kx_1)*(x+kx_1) + (y+ky_1)*(y+ky_1));
+        W1 = W1_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W2 = W2_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W3 = W3_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
+        W4 = W4_old * rho + sqrt_one_rho * (curand_uniform(&localState) - 0.5);
 
-        kx_2 = 0 * dt * (w_x + kwx_1) + sqrt_dt_12 * W7 * sqrt(D(r, L));
-        ky_2 = 0 * dt * (w_y + kwy_1) + sqrt_dt_12 * W8 * sqrt(D(r, L));
-        kwx_2 = - dt_tau_invert * (w_x + kwx_1) + sqrt_dt_12 * W3 * sqrt(D(r,L));
-        kwy_2 = - dt_tau_invert * (w_y + kwy_1) + sqrt_dt_12 * W4 * sqrt(D(r,L));
-	
-	dx = 0.5 * (kx_1 + kx_2);
-	dy = 0.5 * (ky_1 + ky_2);
-	dw_x = 0.5 * (kwx_1 + kwx_2);
-	dw_y = 0.5 * (kwy_1 + kwy_2);
+        dW1 = (W1 - W1_old) * sqrt_dt_12;
+        dW2 = (W2 - W2_old) * sqrt_dt_12;
+        dW3 = (W3 - W3_old) * sqrt_dt_12;
+        dW4 = (W4 - W4_old) * sqrt_dt_12;
+
+        c_x_0 =  - div_D(x, y, L);
+        c_y_0 =  - div_D(x, y, L);
+
+        b_x_0 = sqrt(D(r, L));
+        b_y_0 = b_x_0;
+
+        b_x_1 = sqrt(D(sqrt(pow(x + 0.5 * b_x_0 * dW1,2) + pow(y + 0.5 * b_y_0 * dW2,2)), L));
+        b_y_1 = b_x_1;
+
+        b_x_2 = sqrt(D(sqrt(pow(x + 0.25 * c_x_0 * (3 * dt + dW1*dW1) + 0.5 * b_x_1 * dW1,2) 
+        + pow(y + 0.5 *  0.25 * c_y_0 * (3 * dt + dW2*dW2) + 0.5 * b_y_1 * dW2,2)), L));
+        b_y_2 = b_x_2;
+
+        b_x_3 = sqrt(D(sqrt(pow(x + 0.5 * c_x_0 * (3 * dt - dW1*dW1) + b_x_2 * dW1,2) 
+        + pow(y + 0.5 * c_y_0 * (3 * dt - dW2*dW2) + b_y_2 * dW2,2)), L));
+        b_y_3 = b_x_3;
+
+        c_x_1 = - div_D(x + 0.5 * c_x_0 * (3 * dt - dW1*dW1) + b_x_2 * dW1, y + 0.5 * c_y_0 * (3 * dt - dW2*dW2) + b_y_2 * dW2, L);
+        c_y_1 = - div_D(x + 0.5 * c_x_0 * (3 * dt - dW1*dW1) + b_x_2 * dW1, y + 0.5 * c_y_0 * (3 * dt - dW2*dW2) + b_y_2 * dW2, L);
+
+        dx = 0.5 * (c_x_0 + c_x_1) * dt + (b_x_0 +  2 * b_x_1 + 2 * b_x_2 + b_x_3) * dW1 / 6;
+        dy = 0.5 * (c_y_0 + c_y_1) * dt + (b_y_0 +  2 * b_y_1 + 2 * b_y_2 + b_y_3) * dW2 / 6;
 
         x += dx;
         y += dy;
-        w_x += dw_x;
-        w_y += dw_y;
+        r = sqrt(x*x + y*y);
 
-	r = sqrt(x*x + y*y);
+        if(r > L)
+        {
+            x -= 2 * dx;
+            y -= 2 * dy;
 
-	if(r > L/2)
-	{
-	    x -= dx;
-	    y -= dy;
-	    x += (8 * x * y * dy) / (L*L) - (4*(x*x -y*y)*dx)/(L*L);
-	    y += (4*(x*x - y*y)*dy)/(L*L) + (8*x*y*dy)/(L*L);
-	    w_x = (8 * x * y * w_y) / (L*L) - (4*(x*x -y*y)*w_x)/(L*L);
-	    w_y = (4*(x*x - y*y)*w_x)/(L*L) + (8*x*y*w_y)/(L*L); 
-	}
+            // w_x = (8 * x * y * w_y) / (L*L) - (4*(x*x -y*y)*w_x)/(L*L);
+            // w_y = (4*(x*x - y*y)*w_x)/(L*L) + (8*x*y*w_y)/(L*L); 
+        }
+
+        r = sqrt(x*x + y*y);
 
 #ifdef CONCENTRATION
         ind = min(int(r / r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
 
-	if(int(r/r_bin) > size)
-		printf("ERROR!!!\n");
+	    if(int(r/r_bin) > size)
+        {
+            printf("r = %f\n", r);
+        }
 #endif // CONCENTRATION
 
 #ifdef TRAJECTORY
