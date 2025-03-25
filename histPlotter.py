@@ -14,5 +14,5 @@ if __name__=="__main__":
     plt.xlabel('r')
     plt.ylabel('n(r)')
     ymax = max(data)
-    plt.ylim(0, 1.05 * ymax)
+    #plt.ylim(0, 1.05 * ymax)
     plt.savefig(sys.argv[3], format="pdf", bbox_inches="tight")
