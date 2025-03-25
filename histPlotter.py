@@ -10,9 +10,9 @@ if __name__=="__main__":
 
     data = data * nBins / BoxSize
 
-    plt.plot(x, data)
+    plt.plot(x[1:], data[1:]/x[1:])
     plt.xlabel('r')
     plt.ylabel('n(r)')
-    ymax = max(data)
-    #plt.ylim(0, 1.05 * ymax)
+    ymax = max(data[1:]/x[1:])
+    plt.ylim(0, 1.05 * ymax)
     plt.savefig(sys.argv[3], format="pdf", bbox_inches="tight")
