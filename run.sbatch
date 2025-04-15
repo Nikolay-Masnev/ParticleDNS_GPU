@@ -5,4 +5,4 @@
 #SBATCH --partition=gpu
 #SBATCH --gpus=1                   # Требуемое кол-во GPU
 
-./browanian params.txt histogram.data x.data y.data wx.data wy.data
+./browanian_tc_1000 params.txt histogram_1000.data x.data y.data wx.data wy.data
