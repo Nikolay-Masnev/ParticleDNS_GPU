@@ -48,25 +48,36 @@ int main(int argc, char *argv[])
     std::string paramsPath(argv[1]);
     input_params data;
     readParams(data, paramsPath);
+    printParams(data);
 
     // allocate HOST memory
     printf("allocate HOST memory\n");
-    uint64_t nbytes = nBins * sizeof(float);
-    float *concentration = 0;
-    checkCudaErrors(cudaMallocHost((void **)&concentration, nbytes));
-    memset(concentration, 0, nbytes);
 
-    unsigned long long int *uint64_t_concentration = 0;
+    float *concentration = nullptr;
+    float *concentration_2D = nullptr;
+    unsigned long long int *uint64_t_concentration = nullptr;
+    unsigned long long int *uint64_t_concentration_2D = nullptr;
+    float *tr_x = nullptr;
+    float *tr_y = nullptr;
+    float *tr_wx = nullptr;
+    float *tr_wy = nullptr;
+
+#ifdef CONCENTRATION
+    checkCudaErrors(cudaMallocHost((void **)&concentration, nBins * sizeof(float)));
     checkCudaErrors(cudaMallocHost((void **)&uint64_t_concentration, nBins * sizeof(unsigned long long int)));
-    memset(concentration, 0, nBins * sizeof(unsigned long long int));
-    
-   
+    memset(concentration, 0, nBins * sizeof(float));
+    memset(uint64_t_concentration, 0, nBins * sizeof(unsigned long long int));
+#endif /* CONCENTRATION */
+
+#ifdef _2D_HISTOGRAM
+    checkCudaErrors(cudaMallocHost((void **)&concentration_2D, nBins * sizeof(float)));
+    checkCudaErrors(cudaMallocHost((void **)&uint64_t_concentration_2D, 4 * nBins * nBins * sizeof(unsigned long long int)));
+    memset(concentration_2D, 0, 4 * nBins * nBins * sizeof(float));
+    memset(uint64_t_concentration_2D, 0, 4 * nBins * nBins * sizeof(unsigned long long int));
+#endif /* 2D_HISTOGRAM */
+
 #ifdef TRAJECTORY
     uint64_t tr_nbytes = tr_points * sizeof(float);
-    float *tr_x = 0;
-    float *tr_y = 0;
-    float *tr_wx = 0;
-    float *tr_wy = 0;
     checkCudaErrors(cudaMallocHost((void **)&tr_x, tr_nbytes ));
     checkCudaErrors(cudaMallocHost((void **)&tr_y, tr_nbytes ));
     checkCudaErrors(cudaMallocHost((void **)&tr_wx, tr_nbytes ));
@@ -79,16 +90,25 @@ int main(int argc, char *argv[])
     
     // allocate DEVISE memory
     printf("allocate DEVISE memory\n");
-    unsigned long long int *d_concentration = 0;
+
+    unsigned long long int *d_concentration = nullptr;
+    unsigned long long int *d_concentration_2D = nullptr;
+    float *d_tr_x = nullptr;
+    float *d_tr_y = nullptr;
+    float *d_tr_wx = nullptr;
+    float *d_tr_wy = nullptr;
+
+#ifdef CONCENTRATION
     checkCudaErrors(cudaMalloc((void **)&d_concentration, nBins * sizeof(unsigned long long int)));
     cudaMemset(d_concentration, 0, nBins * sizeof(unsigned long long int));
-    
+#endif /* CONCENTRATION */
+
+#ifdef _2D_HISTOGRAM
+    checkCudaErrors(cudaMalloc((void **)&d_concentration_2D, 4 * nBins * nBins * sizeof(unsigned long long int)));
+    cudaMemset(d_concentration_2D, 0, 4 * nBins * nBins * sizeof(unsigned long long int));
+#endif /* 2D_HISTOGRAM */
+
 #ifdef TRAJECTORY
-    float *d_tr_x = 0;
-    float *d_tr_y = 0;
-    float *d_tr_wx = 0;
-    float *d_tr_wy = 0;
-    
     checkCudaErrors(cudaMalloc((void **)&d_tr_x, tr_nbytes));
     checkCudaErrors(cudaMalloc((void **)&d_tr_y, tr_nbytes));
     checkCudaErrors(cudaMalloc((void **)&d_tr_wx, tr_nbytes));
@@ -120,7 +140,21 @@ int main(int argc, char *argv[])
 
     // copy data from host to devise
     printf("copy data from host to devise\n");
+
+#ifdef CONCENTRATION
     cudaMemcpy(d_concentration, uint64_t_concentration, nBins * sizeof(unsigned long long int), cudaMemcpyHostToDevice);
+#endif /* CONCENTRATION */
+
+#ifdef _2D_HISTOGRAM
+    cudaMemcpy(d_concentration_2D, uint64_t_concentration_2D, 4 * nBins * nBins * sizeof(unsigned long long int), cudaMemcpyHostToDevice);
+#endif /* 2D_HISTOGRAM */
+
+#ifdef TRAJECTORY
+    cudaMemcpy(d_tr_x, tr_x, tr_nbytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_tr_y, tr_y, tr_nbytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_tr_wx, tr_wx, tr_nbytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_tr_wy, tr_wy, tr_nbytes, cudaMemcpyHostToDevice);
+#endif /* TRAJECTORY */
 
     //start
     printf("start\n");
@@ -132,14 +166,13 @@ int main(int argc, char *argv[])
     // main loop
     printf("main loop\n");
     
-#ifdef TRAJECTORY
-    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points);
-#else 
-    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, NULL, NULL, NULL, NULL, NULL);
-#endif /* TRAJECTORY */
-
+    numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, 
+        d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points, d_concentration_2D, 4 * nBins * nBins);
     checkCudaErrors(cudaDeviceSynchronize());
+
+#ifdef CONCENTRATION
     cudaMemcpy(uint64_t_concentration, d_concentration, nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+#endif /* CONCENTRATION */
     
 #ifdef TRAJECTORY
     cudaMemcpy(tr_x, d_tr_x, tr_nbytes, cudaMemcpyDeviceToHost);
@@ -147,6 +180,10 @@ int main(int argc, char *argv[])
     cudaMemcpy(tr_wx, d_tr_wx, tr_nbytes, cudaMemcpyDeviceToHost);
     cudaMemcpy(tr_wy, d_tr_wy, tr_nbytes, cudaMemcpyDeviceToHost);
 #endif /* TRAJECTORY */
+
+#ifdef _2D_HISTOGRAM
+    cudaMemcpy(uint64_t_concentration_2D, d_concentration_2D, 4 * nBins * nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+#endif /* 2D_HISTOGRAM */
 
     // stop
     printf("stop\n");
@@ -162,27 +199,25 @@ int main(int argc, char *argv[])
     }
 
     checkCudaErrors(cudaEventElapsedTime(&gpu_time, start, stop));
-
     printf("time spent executing by the GPU: %.2f\n", gpu_time);
-
     checkCudaErrors(cudaDeviceSynchronize());
 
     // normalize
-    unsigned long long int sum = 0;
-
-    for(unsigned long long int i = 0; i < nBins; ++i)
-    {
-        sum += uint64_t_concentration[i];
-    }
-
-    printf("sum = %lli\n", sum);
-
+#ifdef CONCENTRATION 
     normalizeArray(concentration, uint64_t_concentration,nBins);
+#endif /* CONCENTRATION */
+
+#ifdef _2D_HISTOGRAM
+    normalizeArray(concentration_2D, uint64_t_concentration_2D, 4 * nBins * nBins);
+#endif /* 2D_HISTOGRAM */
 
     // save distribution
     printf("save dist\n");
+
+#ifdef CONCENTRATION  
     saveHist(concentration, argv[2], nBins);
-    
+#endif /* CONCENTRATION3 */
+
 #ifdef TRAJECTORY   
     saveHist(tr_x, argv[3], tr_points);
     saveHist(tr_y, argv[4], tr_points);
@@ -190,14 +225,27 @@ int main(int argc, char *argv[])
     saveHist(tr_wy, argv[6], tr_points);
 #endif /* TRAJECTORY */
 
+#ifdef _2D_HISTOGRAM
+    saveHist(concentration_2D, argv[7], 4 * nBins * nBins);
+    printf(argv[7]);
+#endif /* 2D_HISTOGRAM */
+
     // free memory
     checkCudaErrors(cudaEventDestroy(start));
     checkCudaErrors(cudaEventDestroy(stop));
+    checkCudaErrors(cudaFree(devState));
+
+#ifdef CONCENTRATION  
     checkCudaErrors(cudaFreeHost(concentration));
     checkCudaErrors(cudaFreeHost(uint64_t_concentration));
     checkCudaErrors(cudaFree(d_concentration));
-    checkCudaErrors(cudaFree(devState));
+#endif /* CONCENTRATION */
 
+#ifdef _2D_HISTOGRAM
+    checkCudaErrors(cudaFreeHost(concentration_2D));
+    checkCudaErrors(cudaFreeHost(uint64_t_concentration_2D));
+    checkCudaErrors(cudaFree(d_concentration_2D));
+#endif /* 2D_HISTOGRAM */
 
 #ifdef TRAJECTORY
     checkCudaErrors(cudaFreeHost(tr_x));

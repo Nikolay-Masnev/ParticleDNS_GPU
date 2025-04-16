@@ -48,18 +48,19 @@ __device__ double dD_dy(double x, double y, double L)
 
 __device__ double K(double r, double L)
 {
-    return  100 * (1 + pow(r/L, 2));
+    return  10 * (1 + pow(r/L, 2));
 }
 
 __device__ double tau_corr(double r, double L)
 {
     //return 2 * 1e-2/(1 + 10 * pow(r/L, 2));
-    return 1000;
+    return 1e-6;
 }
 
 __global__ void numericalProcedure(unsigned long long int *d_concentration,
     const input_params params, const unsigned long long int size, curandState *state,
-    float *d_tr_x, float *d_tr_y, float *d_tr_wx, float *d_tr_wy, unsigned long long int tr_points)
+    float *d_tr_x, float *d_tr_y, float *d_tr_wx, float *d_tr_wy, unsigned long long int tr_points,
+    unsigned long long int *d_concentration_2D, unsigned long long int size_2D)
 {
     unsigned long long int idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
@@ -80,6 +81,8 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
+    unsigned long long int indx = 0;
+    unsigned long long int indy = 0;
 
     double r = L * curand_uniform(&localState);
     double phi = 2 * M_PI * curand_uniform(&localState);
@@ -94,16 +97,14 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 
     double rho = 0;
     double sqrt_one_rho = 0;
+    int ind_2d = 0;
 
     __syncthreads();
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {   
-	rho = exp(-dt/tau_corr(r, L));
+	    rho = exp(-dt/tau_corr(r, L));
         sqrt_one_rho = sqrt(1 - rho * rho);
-	
-	//rho = 0;
-	//sqrt_one_rho = 1;
 
         dW1 = sqrt_one_rho * curand_normal(&localState) + rho * dW1;
         dW2 = sqrt_one_rho * curand_normal(&localState) + rho * dW2;
@@ -127,12 +128,12 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         {
             x -= dx;
             y -= dy;
-	    w_x = -w_x;
-	    w_y = -w_y;
-	    dW1 = -dW1;
-	    dW2 = -dW2;
-	    dW3 = -dW3;
-	    dW4 = -dW4;
+            w_x = -w_x;
+            w_y = -w_y;
+            dW1 = -dW1;
+            dW2 = -dW2;
+            dW3 = -dW3;
+            dW4 = -dW4;
         }
 
         r = sqrt(x*x + y*y);
@@ -140,11 +141,6 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 #ifdef CONCENTRATION
         ind = min(int(r / r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
-
-	if(int(r/r_bin) > size)
-        {
-            printf("r = %f\n", r);
-        }
 #endif // CONCENTRATION
 
 #ifdef TRAJECTORY
@@ -156,6 +152,13 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
             d_tr_wy[i] = w_y;
         }
 #endif // TRAJECTORY
+
+#ifdef _2D_HISTOGRAM
+        indx = min(int((x + L) / r_bin), int(2 * size-1));
+        indy = min(int((L - y) / r_bin), int(2 * size-1));
+        ind_2d = indy * (2 * size) + indx;
+        atomicAdd(&d_concentration_2D[ind_2d], 1);
+#endif /* _2D_HISTOGRAM */
     }
 
     __syncthreads();
