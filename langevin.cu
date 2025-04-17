@@ -60,7 +60,8 @@ __device__ double tau_corr(double r, double L)
 __global__ void numericalProcedure(unsigned long long int *d_concentration,
     const input_params params, const unsigned long long int size, curandState *state,
     float *d_tr_x, float *d_tr_y, float *d_tr_wx, float *d_tr_wy, unsigned long long int tr_points,
-    unsigned long long int *d_concentration_2D, unsigned long long int size_2D)
+    unsigned long long int *d_concentration_2D, unsigned long long int size_2D,
+    float *d_velocity_variance, unsigned long long *d_variance_counter, unsigned long long int variance_size)
 {
     unsigned long long int idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
@@ -159,6 +160,12 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         ind_2d = indy * (2 * size) + indx;
         atomicAdd(&d_concentration_2D[ind_2d], 1);
 #endif /* _2D_HISTOGRAM */
+
+#ifdef VELOCITY_VARIANCE
+    ind = min(int(r / r_bin), int(size-1));
+    atomicAdd(&d_velocity_variance[ind], sqrt(w_x * w_x + w_y * w_y));
+    atomicAdd(&d_variance_counter[ind], 1);  
+#endif /* VELOCITY_VARIANCE */
     }
 
     __syncthreads();

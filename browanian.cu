@@ -41,6 +41,14 @@ void normalizeArray(float* arr, unsigned long long int* uint_arr, unsigned long 
     }
 }
 
+void normalizeVariance(float* arr, unsigned long long int* uint_arr, unsigned long long int size)
+{
+    for(unsigned long long int i = 0; i < size; ++i)
+    {
+        arr[i] =arr[i] / (uint_arr[i]+1);
+    }
+}
+
 int main(int argc, char *argv[])
 { 
     // reading params
@@ -61,6 +69,8 @@ int main(int argc, char *argv[])
     float *tr_y = nullptr;
     float *tr_wx = nullptr;
     float *tr_wy = nullptr;
+    float *velocity_variance = nullptr;
+    unsigned long long int *variance_counter = nullptr;
 
 #ifdef CONCENTRATION
     checkCudaErrors(cudaMallocHost((void **)&concentration, nBins * sizeof(float)));
@@ -87,6 +97,13 @@ int main(int argc, char *argv[])
     memset(tr_wx, 0, nbytes);
     memset(tr_wy, 0, nbytes);
 #endif /* TRAJECTORY */
+
+#ifdef VELOCITY_VARIANCE
+    checkCudaErrors(cudaMallocHost((void **)&velocity_variance, nBins * sizeof(float)));
+    checkCudaErrors(cudaMallocHost((void **)&variance_counter, nBins * sizeof(unsigned long long int)));
+    memset(velocity_variance, 0, nBins * sizeof(float));
+    memset(variance_counter, 0, nBins * sizeof(unsigned long long int));
+#endif /* VELOCITY_VARIANCE */
     
     // allocate DEVISE memory
     printf("allocate DEVISE memory\n");
@@ -97,6 +114,8 @@ int main(int argc, char *argv[])
     float *d_tr_y = nullptr;
     float *d_tr_wx = nullptr;
     float *d_tr_wy = nullptr;
+    float *d_velocity_variance = nullptr;
+    unsigned long long int *d_variance_counter = nullptr;
 
 #ifdef CONCENTRATION
     checkCudaErrors(cudaMalloc((void **)&d_concentration, nBins * sizeof(unsigned long long int)));
@@ -119,6 +138,13 @@ int main(int argc, char *argv[])
     cudaMemset(d_tr_wx, 0, tr_nbytes);
     cudaMemset(d_tr_wy, 0, tr_nbytes);
 #endif /* TRAJECTORY */
+
+#ifdef VELOCITY_VARIANCE
+    checkCudaErrors(cudaMalloc((void **)&d_velocity_variance, nBins * sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&d_variance_counter, nBins * sizeof(unsigned long long int)));
+    cudaMemset(d_velocity_variance, 0, nBins * sizeof(float));
+    cudaMemset(d_variance_counter, 0, nBins * sizeof(unsigned long long int));
+#endif /* VELOCITY_VARIANCE */
 
     // create cuda event handles
     printf("create cuda event handles\n");
@@ -156,6 +182,11 @@ int main(int argc, char *argv[])
     cudaMemcpy(d_tr_wy, tr_wy, tr_nbytes, cudaMemcpyHostToDevice);
 #endif /* TRAJECTORY */
 
+#ifdef VELOCITY_VARIANCE
+    cudaMemcpy(d_velocity_variance, velocity_variance, nBins * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_variance_counter, variance_counter, nBins * sizeof(unsigned long long int), cudaMemcpyHostToDevice);
+#endif /* VELOCITY_VARIANCE */
+
     //start
     printf("start\n");
     float gpu_time = 0.0f;
@@ -165,9 +196,11 @@ int main(int argc, char *argv[])
 
     // main loop
     printf("main loop\n");
+
+    int nBins_2D =  4 * nBins * nBins;
     
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, 
-        d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points, d_concentration_2D, 4 * nBins * nBins);
+        d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points, d_concentration_2D, nBins_2D, d_velocity_variance, d_variance_counter, nBins);
     checkCudaErrors(cudaDeviceSynchronize());
 
 #ifdef CONCENTRATION
@@ -184,6 +217,11 @@ int main(int argc, char *argv[])
 #ifdef _2D_HISTOGRAM
     cudaMemcpy(uint64_t_concentration_2D, d_concentration_2D, 4 * nBins * nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
 #endif /* 2D_HISTOGRAM */
+
+#ifdef VELOCITY_VARIANCE
+    cudaMemcpy(velocity_variance, d_velocity_variance, nBins * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(variance_counter, d_variance_counter, nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+#endif /* VELOCITY_VARIANCE */
 
     // stop
     printf("stop\n");
@@ -211,6 +249,10 @@ int main(int argc, char *argv[])
     normalizeArray(concentration_2D, uint64_t_concentration_2D, 4 * nBins * nBins);
 #endif /* 2D_HISTOGRAM */
 
+#ifdef VELOCITY_VARIANCE
+    normalizeVariance(velocity_variance, variance_counter, nBins);
+#endif /* VELOCITY_VARIANCE */
+
     // save distribution
     printf("save dist\n");
 
@@ -227,8 +269,11 @@ int main(int argc, char *argv[])
 
 #ifdef _2D_HISTOGRAM
     saveHist(concentration_2D, argv[7], 4 * nBins * nBins);
-    printf(argv[7]);
 #endif /* 2D_HISTOGRAM */
+
+#ifdef VELOCITY_VARIANCE
+    saveHist(velocity_variance, argv[8], nBins);
+#endif /* VELOCITY_VARIANCE */
 
     // free memory
     checkCudaErrors(cudaEventDestroy(start));
@@ -257,6 +302,13 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaFree(d_tr_wx));
     checkCudaErrors(cudaFree(d_tr_wy));
 #endif /* TRAJECTORY */
+
+#ifdef VELOCITY_VARIANCE
+    checkCudaErrors(cudaFreeHost(velocity_variance));
+    checkCudaErrors(cudaFreeHost(variance_counter));
+    checkCudaErrors(cudaFree(d_velocity_variance));
+    checkCudaErrors(cudaFree(d_variance_counter));
+#endif /* VELOCITY_VARIANCE */
 
     return EXIT_SUCCESS;
 }
