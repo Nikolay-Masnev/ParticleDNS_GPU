@@ -48,20 +48,20 @@ __device__ double dD_dy(double x, double y, double L)
 
 __device__ double K(double r, double L)
 {
-    return  10 * (1 + pow(r/L, 2));
+    return (1 + pow(r/L, 2));
 }
 
 __device__ double tau_corr(double r, double L)
 {
     //return 2 * 1e-2/(1 + 10 * pow(r/L, 2));
-    return 1e-6;
+    return 1;
 }
 
 __global__ void numericalProcedure(unsigned long long int *d_concentration,
     const input_params params, const unsigned long long int size, curandState *state,
     float *d_tr_x, float *d_tr_y, float *d_tr_wx, float *d_tr_wy, unsigned long long int tr_points,
     unsigned long long int *d_concentration_2D, unsigned long long int size_2D,
-    float *d_velocity_variance, unsigned long long *d_variance_counter, unsigned long long int variance_size)
+    double *d_velocity_variance, unsigned long long *d_variance_counter, unsigned long long int variance_size)
 {
     unsigned long long int idx = blockIdx.x * blockDim.x + threadIdx.x;
     curandState localState = state[idx];
@@ -71,7 +71,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double a = params.a;
     double r_bin = L / size;
     double sqrt12 = sqrt((float)12);
-    double tau_invert = pow(L, 2) / (pow(a,2) * Re);
+    double tau_invert = 10 * pow(L, 2) / (pow(a,2) * Re);
     double tau = 1/tau_invert;
     double dt = tau/10;
     double sqrt_dt = sqrt(dt);
@@ -104,8 +104,10 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {   
-	    rho = exp(-dt/tau_corr(r, L));
+	rho = exp(-dt/tau_corr(r, L));
         sqrt_one_rho = sqrt(1 - rho * rho);
+	//rho = 0;
+	//sqrt_one_rho = 1;
 
         dW1 = sqrt_one_rho * curand_normal(&localState) + rho * dW1;
         dW2 = sqrt_one_rho * curand_normal(&localState) + rho * dW2;
@@ -122,6 +124,11 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
         y += dy;
         w_x += dw_x;
         w_y += dw_y;
+
+	if(w_x * (w_x - dw_x) < 0)
+		w_x = 0;
+	if(w_y * (w_y - dw_y) < 0)
+		w_y = 0;
 
         r = sqrt(x*x + y*y);
 
@@ -162,9 +169,9 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 #endif /* _2D_HISTOGRAM */
 
 #ifdef VELOCITY_VARIANCE
-    ind = min(int(r / r_bin), int(size-1));
-    atomicAdd(&d_velocity_variance[ind], sqrt(w_x * w_x + w_y * w_y));
-    atomicAdd(&d_variance_counter[ind], 1);  
+	ind = min(int(r/r_bin), int(size-1));
+    	atomicAdd(&d_velocity_variance[ind], w_x * w_x + w_y * w_y);
+    	atomicAdd(&d_variance_counter[ind], 1);  
 #endif /* VELOCITY_VARIANCE */
     }
 

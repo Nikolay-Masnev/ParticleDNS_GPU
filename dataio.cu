@@ -127,3 +127,18 @@ void saveHist(float *concentration, const std::string & path, int size)
 
     else std::cout << "Unable to open file";
 }
+
+void saveHist(double *concentration, const std::string & path, int size)
+{
+    std::ofstream file (path);
+    if (file.is_open())
+    {
+        for(int count = 0; count < size; count ++){
+            file << std::setprecision(10) << concentration[count] << " ";
+        }
+
+    file.close();
+    }
+
+    else std::cout << "Unable to open file";
+}

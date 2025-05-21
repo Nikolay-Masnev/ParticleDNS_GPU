@@ -15,15 +15,18 @@
 #define THREADS 1000
 #define BLOCKS  100
 
-unsigned long long int nBins = 1000;
+unsigned long long int nBins = 100;
 unsigned long long int tr_points = 1e4;
 
-void printArray(float* arr, unsigned long long int size)
+template <typename T>
+void printArray(T* arr, unsigned long long int size)
 {
     for(unsigned long long int i = 0; i < size; ++i)
     {
-        printf("%lli: %f\n", i, arr[i]);
+        std::cout << arr[i] << ' '; 
     }
+
+    std::cout << '\n';
 }
 
 void normalizeArray(float* arr, unsigned long long int* uint_arr, unsigned long long int size)
@@ -41,11 +44,15 @@ void normalizeArray(float* arr, unsigned long long int* uint_arr, unsigned long 
     }
 }
 
-void normalizeVariance(float* arr, unsigned long long int* uint_arr, unsigned long long int size)
+void normalizeVariance(double* arr, unsigned long long int* uint_arr, unsigned long long int size)
 {
+    printArray(arr, size);
+    printArray(uint_arr, size);
+
     for(unsigned long long int i = 0; i < size; ++i)
     {
-        arr[i] =arr[i] / (uint_arr[i]+1);
+        arr[i] = arr[i] / (uint_arr[i]+1);
+	arr[i] = std::sqrt(arr[i]);
     }
 }
 
@@ -69,8 +76,9 @@ int main(int argc, char *argv[])
     float *tr_y = nullptr;
     float *tr_wx = nullptr;
     float *tr_wy = nullptr;
-    float *velocity_variance = nullptr;
+    double *velocity_variance = nullptr;
     unsigned long long int *variance_counter = nullptr;
+    double *fourier_noise = nullptr;
 
 #ifdef CONCENTRATION
     checkCudaErrors(cudaMallocHost((void **)&concentration, nBins * sizeof(float)));
@@ -99,9 +107,9 @@ int main(int argc, char *argv[])
 #endif /* TRAJECTORY */
 
 #ifdef VELOCITY_VARIANCE
-    checkCudaErrors(cudaMallocHost((void **)&velocity_variance, nBins * sizeof(float)));
+    checkCudaErrors(cudaMallocHost((void **)&velocity_variance, nBins * sizeof(double)));
     checkCudaErrors(cudaMallocHost((void **)&variance_counter, nBins * sizeof(unsigned long long int)));
-    memset(velocity_variance, 0, nBins * sizeof(float));
+    memset(velocity_variance, 0, nBins * sizeof(double));
     memset(variance_counter, 0, nBins * sizeof(unsigned long long int));
 #endif /* VELOCITY_VARIANCE */
     
@@ -114,7 +122,7 @@ int main(int argc, char *argv[])
     float *d_tr_y = nullptr;
     float *d_tr_wx = nullptr;
     float *d_tr_wy = nullptr;
-    float *d_velocity_variance = nullptr;
+    double *d_velocity_variance = nullptr;
     unsigned long long int *d_variance_counter = nullptr;
 
 #ifdef CONCENTRATION
@@ -140,9 +148,9 @@ int main(int argc, char *argv[])
 #endif /* TRAJECTORY */
 
 #ifdef VELOCITY_VARIANCE
-    checkCudaErrors(cudaMalloc((void **)&d_velocity_variance, nBins * sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&d_velocity_variance, nBins * sizeof(double)));
     checkCudaErrors(cudaMalloc((void **)&d_variance_counter, nBins * sizeof(unsigned long long int)));
-    cudaMemset(d_velocity_variance, 0, nBins * sizeof(float));
+    cudaMemset(d_velocity_variance, 0, nBins * sizeof(double));
     cudaMemset(d_variance_counter, 0, nBins * sizeof(unsigned long long int));
 #endif /* VELOCITY_VARIANCE */
 
@@ -183,7 +191,7 @@ int main(int argc, char *argv[])
 #endif /* TRAJECTORY */
 
 #ifdef VELOCITY_VARIANCE
-    cudaMemcpy(d_velocity_variance, velocity_variance, nBins * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_velocity_variance, velocity_variance, nBins * sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpy(d_variance_counter, variance_counter, nBins * sizeof(unsigned long long int), cudaMemcpyHostToDevice);
 #endif /* VELOCITY_VARIANCE */
 
@@ -198,7 +206,7 @@ int main(int argc, char *argv[])
     printf("main loop\n");
 
     int nBins_2D =  4 * nBins * nBins;
-    
+    printf("Launch kernel\n");   
     numericalProcedure<<<THREADS, BLOCKS, 0, 0>>>(d_concentration, data,  nBins, devState, 
         d_tr_x, d_tr_y, d_tr_wx, d_tr_wy, tr_points, d_concentration_2D, nBins_2D, d_velocity_variance, d_variance_counter, nBins);
     checkCudaErrors(cudaDeviceSynchronize());
@@ -219,7 +227,7 @@ int main(int argc, char *argv[])
 #endif /* 2D_HISTOGRAM */
 
 #ifdef VELOCITY_VARIANCE
-    cudaMemcpy(velocity_variance, d_velocity_variance, nBins * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(velocity_variance, d_velocity_variance, nBins * sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(variance_counter, d_variance_counter, nBins * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
 #endif /* VELOCITY_VARIANCE */
 

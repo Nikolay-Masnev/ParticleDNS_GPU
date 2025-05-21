@@ -10,6 +10,9 @@ enum class ParamType {BoxSize, a, r0, numSteps, dt, unknown};
 ParamType readToken(std::string &token);
 void readParams(input_params & data, std::string paramsPath);
 void printParams(const input_params &data);
+
 void saveHist(float *concentration, const std::string & path, int size);
+void saveHist(double *concentration, const std::string & path, int size);
+
 
 #endif /* DATAIO_H */
