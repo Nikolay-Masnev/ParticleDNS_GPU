@@ -11,6 +11,7 @@
 
 __constant__ double Re = 2500;
 #define  M_PI  3.14159265358979323846
+__constant__ double a = 1.0;
 
 __device__ void printArray( uint64_t *v, unsigned long long int size)
 {
@@ -31,30 +32,15 @@ __device__ double Sigma(double r)
 
 __device__ double D(double r, double L)
 {
-    //return (1 + pow(r/L, 2));
-    return 0;
+    return (1 + a * r*r / (L*L));
 }
 
-__device__ double dD_dx(double x, double y, double L)
+__device__ double D_k(int n, double L)
 {
-    //return 2 * x/ (L * L);
-    return 0;
-}
-
-__device__ double dD_dy(double x, double y, double L)
-{
-    //return 2 * y/ (L * L);
-    return 0;
-}
-
-__device__ double K(double r, double L)
-{
-    return (2 - (r-L/2) * (r-L/2) / (L*L/4) );
-}
-
-__device__ double dK_dx(double r, double L)
-{
-    return -2 * (r-L/2) / (L*L/4);
+    if(n==0)
+	return 1 + a/12;
+    else
+	return (12 + a)/24 + a/ (16 * n * n * M_PI * M_PI);
 }
 
 __device__ double tau_corr(double r, double L)
@@ -76,7 +62,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double a = params.a;
     double r_bin = L / size;
     double sqrt12 = sqrt((float)12);
-    double tau_invert = 100 * pow(L, 2) / (pow(a,2) * Re);
+    double tau_invert = pow(L, 2) / (pow(a,2) * Re);
     double tau = 1/tau_invert;
     double dt = tau/10;
     double sqrt_dt = sqrt(dt);
@@ -90,49 +76,46 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
 
-    x = L * curand_uniform(&localState);
+    x = L * (curand_uniform(&localState)-0.5);
 
     double W[100];
     
     for(int i = 0; i < fourier_size; ++i)
-	W[i] = curand_uniform(&localState);
+	W[i] = 0;
 
     double u = 0;
-
-    for(int i = 0; i < fourier_size; ++i)
-	u += W[i] * 2 * cos(k * i * x) / fourier_size;
 
     __syncthreads();
 
     double tmp = 0;
 
-    double t_c_inv = 1 / (19 * tau);
+    double t_c_inv = 1 / (10 * tau);
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {
-	for (int j = 0; j < 100; ++j)
+	for (int j = 0; j < fourier_size; ++j)
 	{
-	    tmp =  - dt * W[j] * t_c_inv + sqrt(K(x,L)) * sqrt_dt * curand_normal(&localState) * t_c_inv;
-	    W[j] = W[j] + tmp;
+	    tmp =  - dt * W[j] * t_c_inv + sqrt(2 * D_k(j,L)) * sqrt_dt * curand_normal(&localState) * t_c_inv;
+	    W[j] += tmp;
 	    u += tmp * 2 * cos(k * j * x) / fourier_size;
 	}
 
 	w_x = w_x - tau_invert * w_x * dt + tau_invert * u * dt;
 	x += w_x * dt;
 
-        if(x > L)
+        if(x > L/2)
         {
-            x = L - abs(x-L);
+            x = L/2 - abs(x-L/2);
 	    w_x = -w_x;
         }
-	else if(x < 0)
+	else if(x < -L/2)
 	{
-	    x = -x;
+	    x = -L/2 + abs(x + L/2);
 	    w_x = -w_x;
 	}
 
 #ifdef CONCENTRATION
-        ind = min(int(x / r_bin), int(size-1));
+        ind = min(int((x+L/2) / r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
 #endif // CONCENTRATION
     }
