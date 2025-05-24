@@ -78,7 +78,7 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double dt_tau_invert = dt * tau_invert;
 
     double dx = 0, dy = 0, x = 0, y = 0;
-    double dw_x = 0, dw_y = 0, w_x = 0, w_y = 0, w_x_old = 0, w_y_old = 0;
+    double dw_x = 0, dw_y = 0, w_x = 0, w_y = 0;
 
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
@@ -104,18 +104,18 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {   
-	rho = exp(-dt/tau_corr(r, L));
-        sqrt_one_rho = sqrt(1 - rho * rho);
-	//rho = 0;
-	//sqrt_one_rho = 1;
+	//rho = exp(-dt/tau_corr(r, L));
+        //sqrt_one_rho = sqrt(1 - rho * rho);
+	rho = 0;
+	sqrt_one_rho = 1;
 
         dW1 = sqrt_one_rho * curand_normal(&localState) + rho * dW1;
         dW2 = sqrt_one_rho * curand_normal(&localState) + rho * dW2;
         dW3 = sqrt_one_rho * curand_normal(&localState) + rho * dW3;
         dW4 = sqrt_one_rho * curand_normal(&localState) + rho * dW4;
 
-        dx = (w_x + 0 * dD_dx(x,y,L)) * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW1;
-        dy = (w_y + 0 * dD_dy(x,y,L)) * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW2;
+        dx = w_x * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW1;
+        dy = w_y + 0 * dD_dy(x,y,L)) * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW2;
 
         dw_x = (-tau_invert * w_x) * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW3;
         dw_y = (-tau_invert * w_y) * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW4;

@@ -78,7 +78,6 @@ int main(int argc, char *argv[])
     float *tr_wy = nullptr;
     double *velocity_variance = nullptr;
     unsigned long long int *variance_counter = nullptr;
-    double *fourier_noise = nullptr;
 
 #ifdef CONCENTRATION
     checkCudaErrors(cudaMallocHost((void **)&concentration, nBins * sizeof(float)));

@@ -30,22 +30,9 @@ __device__ double Sigma(double r)
     return 10 * (0.2 * tanh(0.5 * r) - 0.1 * tanh(0.1 * r));
 }
 
-__device__ double D(double r, double L)
+__device__ double sqrt_D(double r, double L)
 {
-    return (1 + a * r*r / (L*L));
-}
-
-__device__ double D_k(int n, double L)
-{
-    if(n==0)
-	return 1 + a/12;
-    else
-	return (12 + a)/24 + a/ (16 * n * n * M_PI * M_PI);
-}
-
-__device__ double tau_corr(double r, double L)
-{
-    return 10.;
+    return sqrt(1 + a * (r-L/2)*(r-L/2) / (L*L/4));
 }
 
 __global__ void numericalProcedure(unsigned long long int *d_concentration,
@@ -64,58 +51,46 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double sqrt12 = sqrt((float)12);
     double tau_invert = pow(L, 2) / (pow(a,2) * Re);
     double tau = 1/tau_invert;
-    double dt = tau/10;
+    double dt = tau/100;
     double sqrt_dt = sqrt(dt);
     double dt_tau_invert = dt * tau_invert;
-    const int fourier_size = 100;
-    double k = 2 * M_PI / L; 
 
     double dx = 0, x = 0;
     double dw_x = 0, w_x = 0;
+    double u = 0, du=0;
+    double sqrt_K = 0.1;
 
     unsigned long long int steps = params.numSteps;
     unsigned long long int ind = 0;
 
-    x = L * (curand_uniform(&localState)-0.5);
-
-    double W[100];
-    
-    for(int i = 0; i < fourier_size; ++i)
-	W[i] = 0;
-
-    double u = 0;
+    x = L * curand_uniform(&localState);
 
     __syncthreads();
 
-    double tmp = 0;
-
-    double t_c_inv = 1 / (10 * tau);
+    double t_c_inv = 1 / (0.1 * tau);
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {
-	for (int j = 0; j < fourier_size; ++j)
-	{
-	    tmp =  - dt * W[j] * t_c_inv + sqrt(2 * D_k(j,L)) * sqrt_dt * curand_normal(&localState) * t_c_inv;
-	    W[j] += tmp;
-	    u += tmp * 2 * cos(k * j * x) / fourier_size;
-	}
+	u += t_c_inv * (-u * dt + sqrt_D(x,L) * sqrt_dt * curand_normal(&localState));
+	w_x += (- tau_invert * w_x * dt + sqrt_K * sqrt_dt * curand_normal(&localState));
+	x += (w_x + u) * dt;
+	//x += sqrt_D(x,L) * sqrt_dt * curand_normal(&localState);
 
-	w_x = w_x - tau_invert * w_x * dt + tau_invert * u * dt;
-	x += w_x * dt;
-
-        if(x > L/2)
+        if(x > L)
         {
-            x = L/2 - abs(x-L/2);
+            x = L - abs(x-L);
 	    w_x = -w_x;
+	    u = 0;
         }
-	else if(x < -L/2)
+	else if(x < 0)
 	{
-	    x = -L/2 + abs(x + L/2);
+	    x = -x;
 	    w_x = -w_x;
+	    u = 0;
 	}
 
 #ifdef CONCENTRATION
-        ind = min(int((x+L/2) / r_bin), int(size-1));
+        ind = min(int(x/r_bin), int(size-1));
         atomicAdd(&d_concentration[ind], 1);
 #endif // CONCENTRATION
     }

@@ -6,7 +6,6 @@
 #include <curand_kernel.h>
 
 #define CONCENTRATION
-#define SPACE_CORRELATIONS
 //#define TRAJECTORY
 //#define _2D_HISTOGRAM
 //#define VELOCITY_VARIANCE
