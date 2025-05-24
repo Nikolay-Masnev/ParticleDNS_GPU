@@ -8,7 +8,7 @@
 #include "helper_cuda.h"
 #include "helper_functions.h" 
 
-__constant__ double Re = 2500;
+__constant__ double Re = 2500.;
 #define  M_PI  3.14159265358979323846
 
 __device__ void printArray( uint64_t *v, unsigned long long int size)
@@ -23,38 +23,14 @@ __global__ void setup_kernel(curandState * state, unsigned long seed )
     curand_init(seed, id , 0, &state[id]);
 }
 
-__device__ double Sigma(double r)
-{
-    return 10 * (0.2 * tanh(0.5 * r) - 0.1 * tanh(0.1 * r));
-}
-
 __device__ double D(double r, double L)
-{
-    //return (1 + pow(r/L, 2));
-    return 0;
-}
-
-__device__ double dD_dx(double x, double y, double L)
-{
-    //return 2 * x/ (L * L);
-    return 0;
-}
-
-__device__ double dD_dy(double x, double y, double L)
-{
-    //return 2 * y/ (L * L);
-    return 0;
-}
-
-__device__ double K(double r, double L)
 {
     return (1 + pow(r/L, 2));
 }
 
-__device__ double tau_corr(double r, double L)
+__device__ double K(double r, double L)
 {
-    //return 2 * 1e-2/(1 + 10 * pow(r/L, 2));
-    return 1;
+    return 0.1 * (1 + pow(r/L, 2));
 }
 
 __global__ void numericalProcedure(unsigned long long int *d_concentration,
@@ -100,35 +76,35 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
     double sqrt_one_rho = 0;
     int ind_2d = 0;
 
+    double t_c = tau/10;
+
     __syncthreads();
 
     for(unsigned long long int i = 0; i < steps; ++i)
     {   
-	//rho = exp(-dt/tau_corr(r, L));
-        //sqrt_one_rho = sqrt(1 - rho * rho);
-	rho = 0;
-	sqrt_one_rho = 1;
+	    rho = exp(-dt/t_c);
+        sqrt_one_rho = sqrt(1 - rho * rho);
 
         dW1 = sqrt_one_rho * curand_normal(&localState) + rho * dW1;
         dW2 = sqrt_one_rho * curand_normal(&localState) + rho * dW2;
-        dW3 = sqrt_one_rho * curand_normal(&localState) + rho * dW3;
-        dW4 = sqrt_one_rho * curand_normal(&localState) + rho * dW4;
+        dW3 = curand_normal(&localState);
+        dW4 = curand_normal(&localState);
 
-        dx = w_x * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW1;
-        dy = w_y + 0 * dD_dy(x,y,L)) * dt + 0 * sqrt(2 * D(r, L)) * sqrt_dt * dW2;
+        dx = w_x * dt + sqrt(2 * D(r, L)) * sqrt_dt * dW1;
+        dy = w_y + dt * sqrt(2 * D(r, L)) * sqrt_dt * dW2;
 
-        dw_x = (-tau_invert * w_x) * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW3;
-        dw_y = (-tau_invert * w_y) * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW4;
+        dw_x = -tau_invert * w_x * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW3;
+        dw_y = -tau_invert * w_y * dt + sqrt(2 * K(r, L)) * sqrt_dt * dW4;
 
         x += dx;
         y += dy;
         w_x += dw_x;
         w_y += dw_y;
 
-	if(w_x * (w_x - dw_x) < 0)
-		w_x = 0;
-	if(w_y * (w_y - dw_y) < 0)
-		w_y = 0;
+	    if(w_x * (w_x - dw_x) < 0)
+		    w_x = 0;
+    	if(w_y * (w_y - dw_y) < 0)
+		    w_y = 0;
 
         r = sqrt(x*x + y*y);
 
@@ -138,10 +114,10 @@ __global__ void numericalProcedure(unsigned long long int *d_concentration,
             y -= dy;
             w_x = -w_x;
             w_y = -w_y;
-            dW1 = -dW1;
-            dW2 = -dW2;
-            dW3 = -dW3;
-            dW4 = -dW4;
+            dW1 = 0;
+            dW2 = 0;
+            dW3 = 0;
+            dW4 = 0;
         }
 
         r = sqrt(x*x + y*y);
